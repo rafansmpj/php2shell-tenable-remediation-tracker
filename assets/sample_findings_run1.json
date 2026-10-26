@@ -12,7 +12,9 @@
   "role": "vulnerable",
   "state": "ACTIVE",
   "first_seen": "2026-10-21",
-  "fixed_date": ""
+  "fixed_date": "",
+  "acr": 9,
+  "aes": 774
  },
  {
   "asset": "web-01",
@@ -27,7 +29,9 @@
   "role": "vulnerable",
   "state": "ACTIVE",
   "first_seen": "2026-10-22",
-  "fixed_date": ""
+  "fixed_date": "",
+  "acr": 9,
+  "aes": 774
  },
  {
   "asset": "web-02",
@@ -57,7 +61,9 @@
   "role": "vulnerable",
   "state": "FIXED",
   "first_seen": "2026-10-21",
-  "fixed_date": "2026-10-22"
+  "fixed_date": "2026-10-22",
+  "acr": 3,
+  "aes": 666
  },
  {
   "asset": "cms-01",
@@ -72,7 +78,9 @@
   "role": "vulnerable",
   "state": "ACTIVE",
   "first_seen": "2026-10-10",
-  "fixed_date": ""
+  "fixed_date": "",
+  "acr": 4,
+  "aes": 809
  },
  {
   "asset": "legacy-01",
@@ -87,7 +95,9 @@
   "role": "inventory",
   "state": "ACTIVE",
   "first_seen": "",
-  "fixed_date": ""
+  "fixed_date": "",
+  "acr": 5,
+  "aes": 515
  },
  {
   "asset": "app-03",
@@ -102,7 +112,9 @@
   "role": "inventory",
   "state": "ACTIVE",
   "first_seen": "",
-  "fixed_date": ""
+  "fixed_date": "",
+  "acr": 7,
+  "aes": 295
  },
  {
   "asset": "app-04",
@@ -117,6 +129,8 @@
   "role": "inventory",
   "state": "ACTIVE",
   "first_seen": "",
-  "fixed_date": ""
+  "fixed_date": "",
+  "acr": 3,
+  "aes": 628
  }
 ]

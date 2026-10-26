@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
-FALLBACK_VERSION = "2.9.0"
+FALLBACK_VERSION = "2.15.0"
 LEDGER_FORMAT = 1
 MAX_DETAILED_RUNS = 60  # older runs keep KPIs only
 
@@ -36,6 +36,22 @@ FIXED = {(8, 2): (8, 2, 35), (8, 3): (8, 3, 36), (8, 4): (8, 4, 27), (8, 5): (8,
 CVES = ["CVE-2026-109618", "CVE-2026-109619"]
 FAQ_URL = ("https://www.tenable.com/blog/php2shell-cve-2026-109618-cve-2026-109619-"
            "frequently-asked-questions-about-critical-php-remote")
+
+# Node2Shell (CVE-2026-111497): Brotli decoder out-of-bounds write, disclosed the same day as PHP2Shell.
+# Not a PHP flaw, so it is tracked in its own section and NEVER feeds the PHP2Shell KPIs, posture or comparison.
+N2S_CVE = "CVE-2026-111497"
+N2S_DISCLOSURE = date(2026, 10, 21)   # Node.js security release; CVE record published 2026-10-22
+N2S_FIXED = {                          # component -> {branch: fixed release}; branch = (major,) or (major, minor)
+    "nodejs": {(22,): (22, 23, 4), (24,): (24, 22, 1), (26,): (26, 12, 1)},
+    "brotli": {(1, 0): (1, 0, 10), (1, 1): (1, 1, 1), (1, 2): (1, 2, 1)},
+    "python": {(1, 2): (1, 2, 1)},
+}
+N2S_NODE_EOL = lambda major: major <= 20 or major in (21, 23, 25)  # no fix from Node.js
+N2S_SOURCES = [
+    ("Debian security tracker — CVE-2026-111497", "https://security-tracker.debian.org/tracker/CVE-2026-111497"),
+    ("Rescana — Node2Shell: Node.js Brotli flaw, fixed releases", "https://www.rescana.com/post/nodejs-cve-2026-111497-node2shell-brotli-rce-october-2026"),
+    ("Aikido — Node2Shell impact beyond Node.js (Python, curl, Envoy, Istio)", "https://www.aikido.dev/blog/python-packages-vulnerable-node2shell-brotli-cve-2026-111497"),
+]
 
 
 def skill_version():
@@ -48,7 +64,7 @@ def skill_version():
 # ---------------------------------------------------------------- i18n
 T = {
  "en": {
-  "title": "PHP2Shell Exposure & Remediation Tracker",
+  "title": "PHP2Shell & Node2Shell \u2014 Exposure & Remediation Tracker",
   "executed": "Executed", "run": "Run", "version": "Skill version", "sla": "SLA",
   "days": "days", "disclosure": "Disclosure", "exec_summary": "Executive summary",
   "decisions": "Decisions and asks", "kpis": "Key indicators",
@@ -72,6 +88,9 @@ T = {
   "c_asset": "Asset", "c_ip": "IP", "c_src": "Source", "c_plugin": "Plugin", "c_ver": "PHP version",
   "c_vstatus": "Version status", "c_state": "State", "c_first": "First seen", "c_due": "SLA due",
   "c_fixed": "Fixed", "c_daysopen": "Days open", "c_outcome": "SLA outcome", "c_last": "Last seen",
+  "c_vpr": "VPR", "c_acr": "ACR", "c_aes": "AES",
+  "sc_note": "VPR = Tenable Vulnerability Priority Rating of the plugin (0–10). ACR = Asset Criticality Rating (1–10) and AES = Asset Exposure Score (0–1000), both from Tenable One for the asset at run time. “—” = Tenable returned no value.",
+  "sc_missing": "Tenable returned no {what} for this run, so those columns show “—”.",
   "c_role": "Role", "c_change": "Change",
   "mitig": "Interim mitigations (reduce exposure, not a fix)",
   "limits": "Known limitations", "sources": "Sources",
@@ -223,9 +242,82 @@ T = {
   "mitig_restart": "Restart every PHP worker; WAF rules on internet-facing PHP.",
   "limits_list": ["Status comes from the PHP version alone; distro backports (Ubuntu, RHEL) can show as vulnerable when patched — check vendor advisories.", "WAS plugins were published 21 Oct 2026; earlier scans cannot report PHP2Shell, so an empty result on a stale asset means unassessed, not clean.", "\"No longer reported\" in the run comparison does not prove a fix."],
   "kpi_only": "Baseline kept KPIs only (older than the detail window).",
+  "n2s_h": "Node2Shell (CVE-2026-111497)",
+  "n2s_status": "Status as of 23 Oct 2026: CVSS 4.0 score 9.2 (Google, CNA); no exploitation in the wild reported and not in the CISA KEV catalog; public proof-of-concept code exists. A service is exposed only if it, or a library it uses, decodes Brotli data an attacker controls.",
+  "n2s_none": "No Node2Shell data was collected on this run, so this section is empty. That is not evidence that no asset is affected.",
+  "dd_hint": "Click any tile — here, under Assets by version status or in the strip under the executive summary — to see the assets and findings behind it.",
+  "dd_asset1": "{n} asset",
+  "dd_finding1": "{n} finding",
+  "dd_close": "Close",
+  "dd_assets": "{n} assets",
+  "dd_findings": "{n} findings",
+  "dd_empty": "Nothing in this tile.",
+  "dd_nofind": "No vulnerable findings",
+  "dd_unscanned": "not scanned since disclosure",
+  "c_vgroup": "Version group",
+  "c_astatus": "Asset status",
+  "c_open_n": "Open findings",
+  "as_open": "Open findings",
+  "as_at_risk": "Vulnerable version, no open finding",
+  "as_remediated": "Remediated",
+  "as_patched": "Patched",
+  "as_unknown": "Unknown",
+  "hs_assets": "Assets running PHP",
+  "hs_confirmed": "Confirmed vulnerable",
+  "hs_unassessed": "Not assessed since disclosure",
+  "hs_open": "Open findings",
+  "hs_rem": "Remediated",
+  "hs_rate": "Remediation rate",
+  "hs_mttr": "Mean time to remediate",
+  "hs_breach": "Open past {n}-day SLA",
+  "vb_h": "Assets by version status",
+  "vb_hint": "Each asset is counted once, in the first group that applies from left to right, so the six add up to the {n} assets in scope. Hover a tile for its definition.",
+  "vb_eol": "Vulnerable – EOL",
+  "vb_backport": "Vulnerable – backport only",
+  "vb_patch": "Vulnerable – patch available",
+  "vb_unknown": "Unknown – verify",
+  "vb_patched": "Patched",
+  "vb_na": "Not affected",
+  "vb_eol_d": "Running a PHP branch older than 8.2: end-of-life, no fix will be published — move to a supported branch.",
+  "vb_backport_d": "Vulnerable through an OS-vendor PHP package (distro plugin, or no vendor fix yet): the fix arrives as a backported package, so the version string alone cannot confirm it.",
+  "vb_patch_d": "Vulnerable and an upstream fix exists: PHP 8.5.12 / 8.4.27 / 8.3.36 / 8.2.35, or an image rebuild for containers.",
+  "vb_unknown_d": "PHP found but no version could be read and no open finding decides it — verify on the host.",
+  "vb_patched_d": "On a fixed release, or every finding for the asset is FIXED.",
+  "vb_na_d": "Version outside the affected range.",
+  "st_na": "Not affected",
+  "n2s_cmp_none": "No earlier run in the history has Node2Shell data; the next run will be compared with this one.",
+  "c_component": "Component",
+  "c_inst": "Installed version",
+  "comp_nodejs": "Node.js",
+  "comp_brotli": "Brotli library",
+  "comp_python": "Python Brotli / brotlicffi",
+  "comp_container": "Container image",
+  "n2s_rem_container": ["Rebuild the image on a base image with Node.js 22.23.4 / 24.22.1 / 26.12.1 or Brotli 1.0.10 / 1.1.1 / 1.2.1 (or the distro's patched package).", "Redeploy every running workload from the new image — patching a running container does not persist.", "Re-scan the image / registry to confirm the finding moves to FIXED."],
+  "comp_distro": "OS package",
+  "comp_other": "Bundled Brotli (other software)",
+  "n2s_tgt_eol": "EOL – move to Node.js 22, 24 or 26",
+  "n2s_tgt_na": "Not affected (before 1.0.3)",
+  "n2s_rem_nodejs": ["Upgrade Node.js to the fixed release of its line: 22.23.4, 24.22.1 or 26.12.1 — on servers, container and serverless images and CI runners.", "Lines 20.x and older, 23.x and 25.x are end-of-life and get no fix: move them to 22, 24 or 26.", "Updating npm packages such as Express does not fix this; the runtime itself must be upgraded.", "Restart every Node.js process and re-scan to confirm the finding moves to FIXED."],
+  "n2s_rem_brotli": ["Update the Brotli library to 1.2.1, or 1.1.1 / 1.0.10 on older branches.", "Rebuild or update software that links or bundles libbrotli statically (curl, Bun, Envoy, Istio) to its fixed release.", "Restart the services that load the library and re-scan to confirm the finding moves to FIXED."],
+  "n2s_rem_python": ["Upgrade the Python packages Brotli to 1.2.1 and brotlicffi to 1.2.1.0 in every environment and image.", "Restart the Python services and re-scan to confirm the finding moves to FIXED."],
+  "n2s_rem_distro": ["Apply the OS vendor's brotli / nodejs package update (apt / dnf / yum / zypper); vendors backport the fix, so the version string may stay below the upstream fixed release.", "Check the vendor advisory in the plugin references for the exact fixed package version; some distributions have not shipped one yet.", "Restart the services that use the package and re-scan to confirm the finding moves to FIXED."],
+  "n2s_rem_other": ["Update the product that bundles Brotli to its fixed release (e.g. Bun 1.4.4; Envoy 1.40.0 / 1.39.3 / 1.38.6 / 1.37.8; Istio 1.29.9 / 1.30.6 / 1.31.2).", "Where no update is available yet, apply the mitigations below.", "Re-scan to confirm the finding moves to FIXED."],
+  "n2s_mit": ["Reject inbound requests whose Content-Encoding contains <code>br</code> at the proxy, WAF or middleware.", "For outbound calls, drop <code>br</code> from Accept-Encoding and reject Brotli responses before decoding — changing the header alone is not enough.", "Express / body-parser: <code>inflate: false</code> rejects encoded request bodies (inbound only; fetched responses are not covered).", "Envoy / Istio: remove the Brotli decompressor filter if configured; curl: drop <code>--compressed</code>.", "Python: uninstall Brotli / brotlicffi only as a last resort (servers that send Brotli may then fail)."],
+  "n2s_limits": ["Node2Shell status comes from the installed Node.js / Brotli version; it does not show whether the service actually decodes attacker-controlled Brotli, so a version match can overstate real exposure.", "Software that statically bundles Brotli (curl, Bun, Envoy, Istio, desktop apps) may not be found by version checks."],
+  "export": "Export",
+  "ctx_risk_h": "Business risk",
+  "ctx_asks_h": "Decisions and asks",
+  "ctx_risk": "Unauthenticated attackers can run code on a vulnerable PHP server with a single request. Typical impact is full compromise of the web tier: data theft, ransomware staging and a foothold for lateral movement. Public exploitation began at disclosure, so the window between scan and patch is the exposure the business carries.",
+  "ctx_asks": [["Confirm scan coverage.", "Check that credentialed Nessus and Web App Scanning have covered the web estate since 21 October with current plugins. An empty result can mean no PHP, or assets that were never scanned or have aged out of the inventory."], ["Reduce exposure while patching.", "Apply the interim settings below and WAF rules on internet-facing PHP; they lower risk but do not remove it."]],
+  "php_h": "PHP2Shell (CVE-2026-109618 / CVE-2026-109619)",
+  "sections": "Sections by CVE",
+  "tabs_hint": "One section per CVE. Pick a section above; each has its own summary, SLA, KPIs, run comparison, history, plugins, tracker and findings. The PDF prints both.",
+  "not_collected": "Not collected",
+  "n2s_why": "Not a PHP vulnerability: Node2Shell was disclosed the same day as PHP2Shell but is measured here on its own — Node.js, Brotli and Python Brotli versions against their own fixed releases — and never changes the PHP2Shell numbers.",
+  "n2s_over": {"hs_assets": "Assets running Node.js / Brotli", "c_target": "Target version", "vb_eol_d": "Running Node.js 20.x or older, 23.x or 25.x: end-of-life, Node.js will not fix it — move to 22, 24 or 26.", "vb_backport_d": "Vulnerable through an OS-vendor brotli / nodejs package: the fix arrives as a backported package, so the version string alone cannot confirm it.", "vb_patch_d": "Vulnerable and a fix exists: Node.js 22.23.4 / 24.22.1 / 26.12.1, Brotli 1.0.10 / 1.1.1 / 1.2.1, Python Brotli 1.2.1, a vendor release of the bundling product, or an image rebuild.", "vb_unknown_d": "No Node.js / Brotli version could be read and no open finding decides it — verify on the host.", "vb_na_d": "Brotli older than 1.0.3, or a version outside the affected range.", "ctx_risk": "Unauthenticated attackers can corrupt memory and potentially run code on a vulnerable Node.js server or any service that decodes Brotli, with crafted compressed data. Worst-case impact is full compromise of the affected service — APIs, Python services and proxies such as Envoy and Istio: data theft, ransomware staging and a foothold for lateral movement. Public proof-of-concept code appeared at disclosure, so the window between scan and patch is the exposure the business carries.", "ctx_asks": [["Confirm scan coverage.", "Check that credentialed Nessus and container image scanning have covered the Node.js and Brotli estate since 21 October with current plugins. An empty result can mean no affected runtime, or assets that were never scanned or have aged out of the inventory."], ["Reduce exposure while patching.", "Apply the interim mitigations below and reject Brotli-encoded (br) requests at the proxy or WAF on internet-facing services; they lower risk but do not remove it."]], "k_php": "Assets with Node2Shell findings", "k_unscanned": "Assets not scanned since disclosure", "c_ver": "Installed version", "c_vstatus": "Target version", "verdict_CRITICAL": "{open} open Node2Shell findings on {exposed} assets, {breached} already past the {n}-day SLA.", "verdict_HIGH": "{exposed} assets are still exposed to Node2Shell; none past the {n}-day SLA yet.", "verdict_GUARDED": "No confirmed Node2Shell exposure, but some assets have an unknown version or were not scanned since disclosure.", "verdict_CONTROLLED": "No open Node2Shell exposure, and every affected asset has been assessed since disclosure.", "biz": "Node2Shell (CVE-2026-111497) is an out-of-bounds write in the Google Brotli decoder (1.0.3 to 1.2.0) that a remote, unauthenticated attacker can trigger with a crafted Brotli stream, with possible remote code execution. It reaches Node.js (bundled Brotli), Python Brotli / brotlicffi, libbrotli and software that bundles it (curl, Bun, Envoy, Istio): an exposed service can crash, leak memory or, at worst, be taken over.", "ask_patch": "Upgrade the {exposed} exposed assets to Node.js 22.23.4 / 24.22.1 / 26.12.1 or Brotli 1.0.10 / 1.1.1 / 1.2.1 (Python Brotli 1.2.1), with interim mitigations until then.", "ask_unscanned": "Re-scan the {unscanned} assets not assessed since {d} — a coverage gap, not a clean bill.", "ask_unknown": "Verify the Node.js / Brotli version on {unknown} assets with unknown status.", "sla_src_default": "{n} days is this skill's default, set for PHP2Shell and applied here so both exposures are measured alike. Node2Shell is a pre-authentication, remotely triggerable flaw with a CVSS 4.0 score of 9.2 and public proof-of-concept code; as of 23 Oct 2026 no in-the-wild exploitation was reported and it was not in CISA KEV.", "sla_clock": ["The clock starts at the later of two dates: the public disclosure ({d}) and the finding's first-seen date in Tenable.", "A finding first seen before disclosure (for example by a generic Node.js version plugin) starts on {d}: nobody could remediate Node2Shell before it was public.", "A finding first seen after disclosure starts on its first-seen date: the asset was new, newly scanned or newly vulnerable.", "If Tenable returned no first-seen date, the clock starts at disclosure and the tracker shows \"No first-seen date\"."], "pl_note": "Every plugin Tenable maps to CVE-2026-111497, discovered by CVE on this run. Vulnerable = findings still ACTIVE/RESURFACED; Fixed = findings in state FIXED. A plugin with no findings has not fired in this tenant — not proof of safety if the assets were not scanned since disclosure.", "mit_none": "Not required: this plugin has no findings. Apply only on assets not scanned since disclosure.", "mitig": "Interim mitigations for Node2Shell (reduce exposure, not a fix)"},
  },
  "pt": {
-  "title": "PHP2Shell — Tracker de Exposição e Remediação",
+  "title": "PHP2Shell e Node2Shell — Tracker de Exposição e Remediação",
   "executed": "Executado em", "run": "Execução", "version": "Versão da skill", "sla": "SLA",
   "days": "dias", "disclosure": "Divulgação", "exec_summary": "Resumo executivo",
   "decisions": "Decisões e pedidos", "kpis": "Indicadores-chave",
@@ -249,6 +341,9 @@ T = {
   "c_asset": "Ativo", "c_ip": "IP", "c_src": "Fonte", "c_plugin": "Plugin", "c_ver": "Versão do PHP",
   "c_vstatus": "Status da versão", "c_state": "Estado", "c_first": "First seen", "c_due": "Prazo SLA",
   "c_fixed": "Corrigido", "c_daysopen": "Dias aberto", "c_outcome": "Resultado SLA", "c_last": "Last seen",
+  "c_vpr": "VPR", "c_acr": "ACR", "c_aes": "AES",
+  "sc_note": "VPR = Vulnerability Priority Rating do plugin na Tenable (0–10). ACR = Asset Criticality Rating (1–10) e AES = Asset Exposure Score (0–1000), ambos do Tenable One para o asset no momento da execução. “—” = a Tenable não retornou valor.",
+  "sc_missing": "A Tenable não retornou {what} nesta execução; essas colunas mostram “—”.",
   "c_role": "Papel", "c_change": "Mudança",
   "mitig": "Mitigações temporárias (reduzem a exposição, não corrigem)",
   "limits": "Limitações conhecidas", "sources": "Fontes",
@@ -400,6 +495,79 @@ T = {
   "mitig_restart": "Reiniciar todos os workers PHP; regras de WAF em PHP exposto à internet.",
   "limits_list": ["Status vem só da versão do PHP; backports de distro (Ubuntu, RHEL) podem aparecer como vulneráveis já corrigidos — consulte os advisories do fornecedor.", "Plugins WAS publicados em 21/10/2026; scans anteriores não detectam PHP2Shell — vazio em ativo sem scan recente é não avaliado, não limpo.", "\"Não reportados mais\" na comparação não comprova correção."],
   "kpi_only": "A baseline guardou apenas os KPIs (mais antiga que a janela de detalhe).",
+  "n2s_h": "Node2Shell (CVE-2026-111497)",
+  "n2s_status": "Situação em 23/10/2026: CVSS 4.0 9,2 (Google, CNA); nenhuma exploração ativa reportada e fora do catálogo KEV da CISA; existe código de prova de conceito público. Um serviço só fica exposto se ele, ou uma biblioteca que usa, decodifica dados Brotli controlados pelo atacante.",
+  "n2s_none": "Nenhum dado de Node2Shell foi coletado nesta execução, por isso esta seção está vazia. Isso não é evidência de que nenhum ativo esteja afetado.",
+  "dd_hint": "Clique em qualquer bloco — aqui, em Ativos por status de versão ou na faixa abaixo do resumo executivo — para ver os ativos e findings por trás dele.",
+  "dd_asset1": "{n} ativo",
+  "dd_finding1": "{n} finding",
+  "dd_close": "Fechar",
+  "dd_assets": "{n} ativos",
+  "dd_findings": "{n} findings",
+  "dd_empty": "Nada neste bloco.",
+  "dd_nofind": "Nenhum finding vulnerável",
+  "dd_unscanned": "sem scan desde a divulgação",
+  "c_vgroup": "Grupo de versão",
+  "c_astatus": "Status do ativo",
+  "c_open_n": "Findings abertos",
+  "as_open": "Findings abertos",
+  "as_at_risk": "Versão vulnerável, sem finding aberto",
+  "as_remediated": "Remediado",
+  "as_patched": "Corrigido",
+  "as_unknown": "Desconhecido",
+  "hs_assets": "Ativos com PHP",
+  "hs_confirmed": "Vulneráveis confirmados",
+  "hs_unassessed": "Sem avaliação desde a divulgação",
+  "hs_open": "Findings abertos",
+  "hs_rem": "Remediados",
+  "hs_rate": "Taxa de remediação",
+  "hs_mttr": "Tempo médio de remediação",
+  "hs_breach": "Abertos fora do SLA de {n} dias",
+  "vb_h": "Ativos por status de versão",
+  "vb_hint": "Cada ativo é contado uma vez, no primeiro grupo que se aplica da esquerda para a direita, então os seis somam os {n} ativos no escopo. Passe o mouse em um bloco para ver a definição.",
+  "vb_eol": "Vulnerável – EOL",
+  "vb_backport": "Vulnerável – só backport",
+  "vb_patch": "Vulnerável – patch disponível",
+  "vb_unknown": "Desconhecido – verificar",
+  "vb_patched": "Corrigido",
+  "vb_na": "Não afetado",
+  "vb_eol_d": "Rodando um branch do PHP anterior ao 8.2: EOL, nenhuma correção será publicada — migrar para um branch suportado.",
+  "vb_backport_d": "Vulnerável por um pacote PHP do fornecedor do SO (plugin de distro, ou ainda sem correção do fornecedor): a correção chega como pacote com backport, então só a versão não a confirma.",
+  "vb_patch_d": "Vulnerável e existe correção upstream: PHP 8.5.12 / 8.4.27 / 8.3.36 / 8.2.35, ou reconstrução da imagem para containers.",
+  "vb_unknown_d": "PHP encontrado, mas a versão não pôde ser lida e nenhum finding aberto decide — verificar no host.",
+  "vb_patched_d": "Em um release corrigido, ou todos os findings do ativo estão FIXED.",
+  "vb_na_d": "Versão fora da faixa afetada.",
+  "st_na": "Não afetado",
+  "n2s_cmp_none": "Nenhuma execução anterior do histórico tem dados de Node2Shell; a próxima será comparada com esta.",
+  "c_component": "Componente",
+  "c_inst": "Versão instalada",
+  "comp_nodejs": "Node.js",
+  "comp_brotli": "Biblioteca Brotli",
+  "comp_python": "Brotli / brotlicffi do Python",
+  "comp_container": "Imagem de container",
+  "n2s_rem_container": ["Reconstruir a imagem sobre uma imagem base com Node.js 22.23.4 / 24.22.1 / 26.12.1 ou Brotli 1.0.10 / 1.1.1 / 1.2.1 (ou o pacote corrigido da distro).", "Refazer o deploy de todas as cargas a partir da nova imagem — corrigir um container em execução não persiste.", "Refazer o scan da imagem / registry para confirmar que o finding passa para FIXED."],
+  "comp_distro": "Pacote do SO",
+  "comp_other": "Brotli embutido (outro software)",
+  "n2s_tgt_eol": "EOL – migrar para Node.js 22, 24 ou 26",
+  "n2s_tgt_na": "Não afetado (anterior a 1.0.3)",
+  "n2s_rem_nodejs": ["Atualizar o Node.js para o release corrigido da sua linha: 22.23.4, 24.22.1 ou 26.12.1 — em servidores, imagens de container e serverless e runners de CI.", "As linhas 20.x e anteriores, 23.x e 25.x são EOL e não recebem correção: migrar para 22, 24 ou 26.", "Atualizar pacotes npm como o Express não corrige; é o runtime que precisa ser atualizado.", "Reiniciar todos os processos Node.js e refazer o scan para confirmar que o finding passa para FIXED."],
+  "n2s_rem_brotli": ["Atualizar a biblioteca Brotli para 1.2.1, ou 1.1.1 / 1.0.10 nos branches antigos.", "Reconstruir ou atualizar softwares que embutem a libbrotli estaticamente (curl, Bun, Envoy, Istio) para o release corrigido.", "Reiniciar os serviços que carregam a biblioteca e refazer o scan para confirmar que o finding passa para FIXED."],
+  "n2s_rem_python": ["Atualizar os pacotes Python Brotli para 1.2.1 e brotlicffi para 1.2.1.0 em todos os ambientes e imagens.", "Reiniciar os serviços Python e refazer o scan para confirmar que o finding passa para FIXED."],
+  "n2s_rem_distro": ["Aplicar a atualização do pacote brotli / nodejs do fornecedor do SO (apt / dnf / yum / zypper); o fornecedor faz backport da correção, então a versão pode ficar abaixo do release upstream corrigido.", "Consultar o advisory do fornecedor nas referências do plugin para a versão exata do pacote corrigido; algumas distribuições ainda não publicaram.", "Reiniciar os serviços que usam o pacote e refazer o scan para confirmar que o finding passa para FIXED."],
+  "n2s_rem_other": ["Atualizar o produto que embute o Brotli para o release corrigido (ex.: Bun 1.4.4; Envoy 1.40.0 / 1.39.3 / 1.38.6 / 1.37.8; Istio 1.29.9 / 1.30.6 / 1.31.2).", "Onde ainda não houver atualização, aplicar as mitigações abaixo.", "Refazer o scan para confirmar que o finding passa para FIXED."],
+  "n2s_mit": ["Rejeitar requisições de entrada cujo Content-Encoding contenha <code>br</code> no proxy, WAF ou middleware.", "Em chamadas de saída, remover <code>br</code> do Accept-Encoding e rejeitar respostas Brotli antes de decodificar — mudar só o cabeçalho não basta.", "Express / body-parser: <code>inflate: false</code> rejeita corpos de requisição codificados (só entrada; respostas obtidas não são cobertas).", "Envoy / Istio: remover o filtro descompressor Brotli, se configurado; curl: remover <code>--compressed</code>.", "Python: desinstalar Brotli / brotlicffi só como último recurso (servidores que enviam Brotli podem passar a falhar)."],
+  "n2s_limits": ["O status do Node2Shell vem da versão instalada do Node.js / Brotli; não mostra se o serviço realmente decodifica Brotli controlado pelo atacante, então a versão pode superestimar a exposição real.", "Softwares que embutem o Brotli estaticamente (curl, Bun, Envoy, Istio, apps desktop) podem não ser encontrados por checagem de versão."],
+  "export": "Exportar",
+  "ctx_risk_h": "Risco para o negócio",
+  "ctx_asks_h": "Decisões e pedidos",
+  "ctx_risk": "Atacantes sem autenticação podem executar código em um servidor PHP vulnerável com uma única requisição. O impacto típico é o comprometimento total da camada web: roubo de dados, preparação de ransomware e ponto de apoio para movimentação lateral. A exploração pública começou na divulgação, então a janela entre o scan e o patch é a exposição que o negócio carrega.",
+  "ctx_asks": [["Confirmar a cobertura de scan.", "Verificar se o Nessus credenciado e o Web App Scanning cobriram o ambiente web desde 21 de outubro com plugins atualizados. Um resultado vazio pode significar ausência de PHP, ou ativos que nunca tiveram scan ou saíram do inventário por idade."], ["Reduzir a exposição enquanto o patch não sai.", "Aplicar as configurações temporárias abaixo e regras de WAF no PHP exposto à internet; elas reduzem o risco, mas não o eliminam."]],
+  "php_h": "PHP2Shell (CVE-2026-109618 / CVE-2026-109619)",
+  "sections": "Seções por CVE",
+  "tabs_hint": "Uma seção por CVE. Escolha a seção acima; cada uma tem seu próprio resumo, SLA, KPIs, comparação entre execuções, histórico, plugins, tracker e findings. O PDF imprime as duas.",
+  "not_collected": "Não coletado",
+  "n2s_why": "Não é uma vulnerabilidade do PHP: o Node2Shell foi divulgado no mesmo dia do PHP2Shell, mas é medido aqui separadamente — versões de Node.js, Brotli e Brotli do Python contra seus próprios releases corrigidos — e nunca altera os números do PHP2Shell.",
+  "n2s_over": {"hs_assets": "Ativos com Node.js / Brotli", "c_target": "Versão alvo", "vb_eol_d": "Rodando Node.js 20.x ou anterior, 23.x ou 25.x: EOL, o Node.js não vai corrigir — migrar para 22, 24 ou 26.", "vb_backport_d": "Vulnerável por um pacote brotli / nodejs do fornecedor do SO: a correção chega como pacote com backport, então só a versão não a confirma.", "vb_patch_d": "Vulnerável e existe correção: Node.js 22.23.4 / 24.22.1 / 26.12.1, Brotli 1.0.10 / 1.1.1 / 1.2.1, Brotli do Python 1.2.1, release do fornecedor do produto que embute, ou reconstrução da imagem.", "vb_unknown_d": "Nenhuma versão de Node.js / Brotli pôde ser lida e nenhum finding aberto decide — verificar no host.", "vb_na_d": "Brotli anterior a 1.0.3, ou versão fora da faixa afetada.", "ctx_risk": "Atacantes sem autenticação podem corromper a memória e potencialmente executar código em um servidor Node.js vulnerável ou em qualquer serviço que decodifique Brotli, com dados comprimidos manipulados. O impacto no pior caso é o comprometimento total do serviço afetado — APIs, serviços Python e proxies como Envoy e Istio: roubo de dados, preparação de ransomware e ponto de apoio para movimentação lateral. Código de prova de conceito público surgiu na divulgação, então a janela entre o scan e o patch é a exposição que o negócio carrega.", "ctx_asks": [["Confirmar a cobertura de scan.", "Verificar se o Nessus credenciado e o scan de imagens de container cobriram o ambiente com Node.js e Brotli desde 21 de outubro com plugins atualizados. Um resultado vazio pode significar ausência de runtime afetado, ou ativos que nunca tiveram scan ou saíram do inventário por idade."], ["Reduzir a exposição enquanto o patch não sai.", "Aplicar as mitigações temporárias abaixo e rejeitar requisições com codificação Brotli (br) no proxy ou WAF dos serviços expostos à internet; elas reduzem o risco, mas não o eliminam."]], "k_php": "Ativos com findings Node2Shell", "k_unscanned": "Ativos sem scan desde a divulgação", "c_ver": "Versão instalada", "c_vstatus": "Versão alvo", "verdict_CRITICAL": "{open} findings Node2Shell abertos em {exposed} ativos, {breached} já fora do SLA de {n} dias.", "verdict_HIGH": "{exposed} ativos ainda expostos ao Node2Shell; nenhum finding fora do SLA de {n} dias até agora.", "verdict_GUARDED": "Nenhuma exposição confirmada ao Node2Shell, mas há ativos sem versão conhecida ou sem scan desde a divulgação.", "verdict_CONTROLLED": "Nenhuma exposição aberta ao Node2Shell e todos os ativos afetados foram avaliados desde a divulgação.", "biz": "Node2Shell (CVE-2026-111497) é uma escrita fora dos limites no decodificador Brotli do Google (1.0.3 a 1.2.0) que um atacante remoto, sem autenticação, pode disparar com um fluxo Brotli manipulado, com possível execução remota de código. Atinge o Node.js (Brotli embutido), Brotli / brotlicffi do Python, a libbrotli e softwares que a embutem (curl, Bun, Envoy, Istio): um serviço exposto pode cair, vazar memória ou, no pior caso, ser assumido.", "ask_patch": "Atualizar os {exposed} ativos expostos para Node.js 22.23.4 / 24.22.1 / 26.12.1 ou Brotli 1.0.10 / 1.1.1 / 1.2.1 (Brotli do Python 1.2.1), com mitigações temporárias até lá.", "ask_unscanned": "Re-scan dos {unscanned} ativos sem avaliação desde {d} — lacuna de cobertura, não segurança.", "ask_unknown": "Verificar a versão do Node.js / Brotli em {unknown} ativos com status desconhecido.", "sla_src_default": "{n} dias é o padrão desta skill, definido para o PHP2Shell e aplicado aqui para que as duas exposições sejam medidas da mesma forma. O Node2Shell é uma falha pré-autenticação, disparável remotamente, com CVSS 4.0 9,2 e código de prova de conceito público; em 23/10/2026 não havia exploração ativa reportada e não estava no KEV da CISA.", "sla_clock": ["O relógio começa na mais tardia de duas datas: a divulgação pública ({d}) e o first seen do finding no Tenable.", "Finding com first seen anterior à divulgação (por exemplo, de um plugin genérico de versão do Node.js) começa em {d}: ninguém poderia remediar o Node2Shell antes de ele ser público.", "Finding com first seen posterior à divulgação começa no próprio first seen: o ativo é novo, teve scan recente ou ficou vulnerável depois.", "Se o Tenable não retornou first seen, o relógio começa na divulgação e o tracker mostra \"Sem data de first seen\"."], "pl_note": "Todos os plugins que o Tenable associa à CVE-2026-111497, descobertos por CVE nesta execução. Vulneráveis = findings ainda ACTIVE/RESURFACED; Corrigidos = findings em estado FIXED. Plugin sem findings não disparou neste tenant — não é prova de segurança se os ativos não tiveram scan desde a divulgação.", "mit_none": "Não necessária: este plugin não tem findings. Aplicar apenas em ativos sem scan desde a divulgação.", "mitig": "Mitigações temporárias do Node2Shell (reduzem a exposição, não corrigem)"},
  },
 }
 
@@ -435,12 +603,85 @@ def version_status(v):
     if branch < min(FIXED):
         return "eol"
     if branch > max(FIXED):
-        return "patched"
+        return "na"  # newer than every affected branch
     return "unknown"
 
 
 def esc(x):
     return html.escape("" if x is None else str(x))
+
+
+# ---------------------------------------------------------------- VPR / ACR / AES
+# VPR is per plugin (0-10); ACR (1-10) and AES (0-1000) are per asset, from Tenable One. Never estimated:
+# a value Tenable did not return stays None and renders as "—".
+SC_BANDS = {"vpr": ((9, "c"), (7, "h"), (4, "m"), (0, "l")),   # Tenable VPR: critical / high / medium / low
+            "acr": ((9, "c"), (7, "h"), (4, "m"), (0, "l")),   # ACR 9-10 / 7-8 / 4-6 / 1-3
+            "aes": ((650, "h"), (350, "m"), (0, "l"))}          # AES high / medium / low
+
+
+def num(x):
+    """A score as float, or None when Tenable gave nothing usable (blank, N/A, null)."""
+    if x is None or isinstance(x, bool):
+        return None
+    if isinstance(x, dict):
+        x = x.get("score", x.get("value"))
+    s = str(x).strip()
+    m = re.match(r"^-?\d+(?:\.\d+)?", s)
+    return float(m.group(0)) if m else None
+
+
+def fmt_score(x, kind):
+    return "" if x is None else (f"{x:.1f}" if kind == "vpr" else str(int(round(x))))
+
+
+def sc_html(x, kind):
+    if x is None:
+        return '<span class="muted">—</span>'
+    band = next((b for lo, b in SC_BANDS[kind] if x >= lo), "l")
+    return f'<span class="sc sc-{band}" title="{kind.upper()}">{fmt_score(x, kind)}</span>'
+
+
+def sc_td(x, kind):
+    return f'<td data-s="{-1 if x is None else x}">{sc_html(x, kind)}</td>'
+
+
+def first_num(r, keys):
+    for k in keys:
+        v = num(r.get(k))
+        if v is not None:
+            return v
+    return None
+
+
+def enrich_scores(rows, catalog):
+    """VPR on each row (its own value, else the plugin's from the catalog); ACR / AES on each row from
+    whichever row of the same asset carries them. Returns which of the three Tenable returned at all."""
+    cv = {p["plugin_id"]: p.get("vpr") for p in catalog or []}
+    acr, aes = {}, {}
+    for r in rows:
+        a = r.get("asset") or r.get("ip") or "unknown"
+        v = first_num(r, ("acr", "acr_score", "asset_criticality_rating"))
+        if v is not None:
+            acr.setdefault(a, v)
+        v = first_num(r, ("aes", "aes_score", "exposure_score", "asset_exposure_score"))
+        if v is not None:
+            aes.setdefault(a, v)
+    for r in rows:
+        a = r.get("asset") or r.get("ip") or "unknown"
+        v = first_num(r, ("vpr", "vpr_score"))
+        r["vpr"] = v if v is not None else cv.get(str(r.get("plugin_id") or "").strip())
+        r["acr"], r["aes"] = acr.get(a), aes.get(a)
+    return {"vpr": any(r["vpr"] is not None for r in rows) or any(v is not None for v in cv.values()),
+            "acr": bool(acr), "aes": bool(aes)}
+
+
+def sc_missing_note(flags, keys, L):
+    miss = [k.upper() for k in keys if not (flags or {}).get(k)]
+    return f'<div class="note">{esc(safe_fmt(L["sc_missing"], what=" / ".join(miss)))}</div>' if miss else ""
+
+
+def vpr_line(e, L):
+    return f'<p class="mnote"><b>{esc(L["c_vpr"])}</b> {sc_html(e.get("vpr"), "vpr")}</p>'
 
 
 def prod(x):
@@ -494,17 +735,18 @@ def fkey(r):
 
 
 # ---------------------------------------------------------------- analysis
-def analyse(rows, sla_days, today):
+def analyse(rows, sla_days, today, disclosure=DISCLOSURE, vfn=None):
+    """Generic for both tracks: vfn(row) gives the version status (PHP by default)."""
     asset_info = {}
     for r in rows:
         a = r.get("asset") or r.get("ip") or "unknown"
         r["asset"] = a
         ai = asset_info.setdefault(a, {"ip": r.get("ip", ""), "last_seen": None, "vstat": set(),
-                                       "open": 0, "rem": 0})
+                                       "open": 0, "rem": 0, "acr": r.get("acr"), "aes": r.get("aes")})
         ls = pdate(r.get("last_seen"))
         if ls and (not ai["last_seen"] or ls > ai["last_seen"]):
             ai["last_seen"] = ls
-        r["version_status"] = version_status(r.get("php_version"))
+        r["version_status"] = vfn(r) if vfn else version_status(r.get("php_version"))
         ai["vstat"].add(r["version_status"])
 
     vulns = []
@@ -513,7 +755,7 @@ def analyse(rows, sla_days, today):
             continue
         state = (r.get("state") or "ACTIVE").upper()
         fs, fx = pdate(r.get("first_seen")), pdate(r.get("fixed_date"))
-        start = max(fs, DISCLOSURE) if fs else DISCLOSURE
+        start = max(fs, disclosure) if fs else disclosure
         due = start + timedelta(days=sla_days)
         rec = dict(r)
         rec.update(state=state, first_seen=fs, fixed=fx, due=due, key=fkey(r))
@@ -537,7 +779,7 @@ def analyse(rows, sla_days, today):
             ai["status"] = "at_risk"
         elif ai["rem"]:
             ai["status"] = "remediated"
-        elif "patched" in ai["vstat"]:
+        elif ai["vstat"] & {"patched", "na"}:
             ai["status"] = "patched"
         else:
             ai["status"] = "unknown"
@@ -546,7 +788,7 @@ def analyse(rows, sla_days, today):
     rem_v = [v for v in vulns if v["status"] == "remediated"]
     breached = [v for v in open_v if v["outcome"] == "breached"]
     durations = [v["days_open"] for v in rem_v if v["days_open"] is not None]
-    unscanned = [a for a, ai in asset_info.items() if not ai["last_seen"] or ai["last_seen"] < DISCLOSURE]
+    unscanned = [a for a, ai in asset_info.items() if not ai["last_seen"] or ai["last_seen"] < disclosure]
     exposed = [a for a, ai in asset_info.items() if ai["status"] in ("open", "at_risk")]
     unknown = [a for a, ai in asset_info.items() if ai["status"] == "unknown"]
     total = len(open_v) + len(rem_v)
@@ -570,12 +812,12 @@ def analyse(rows, sla_days, today):
                 unscanned=unscanned, exposed=exposed, breached=breached, open_v=open_v)
 
 
-def timeline(vulns, today):
+def timeline(vulns, today, disclosure=DISCLOSURE):
     dated = [v for v in vulns if v["first_seen"]]
     if not dated:
         return []
-    start = min(min(v["first_seen"] for v in dated), DISCLOSURE)
-    start = max(start, DISCLOSURE - timedelta(days=30))
+    start = min(min(v["first_seen"] for v in dated), disclosure)
+    start = max(start, disclosure - timedelta(days=30))
     out, d = [], start
     while d <= today:
         o = sum(1 for v in dated if v["first_seen"] <= d and not (v["fixed"] and v["fixed"] <= d))
@@ -609,7 +851,8 @@ def load_catalog(path):
                         "product": p.get("product") or p.get("source") or "",
                         "family": p.get("family") or "", "cves": norm_cves(p.get("cves")),
                         "role": p.get("role") or ("inventory" if not p.get("cves") else "vulnerable"),
-                        "plugin_type": p.get("plugin_type") or "",
+                        "plugin_type": p.get("plugin_type") or "", "component": p.get("component") or "",
+                        "vpr": first_num(p, ("vpr", "vpr_score")),
                         "synopsis": p.get("synopsis") or "", "solution": p.get("solution") or "",
                         "see_also": [u for u in (p.get("see_also") or []) if isinstance(u, str)]
                                     if not isinstance(p.get("see_also"), str)
@@ -617,7 +860,7 @@ def load_catalog(path):
     return out
 
 
-def plugin_coverage(catalog, rows):
+def plugin_coverage(catalog, rows, cves=CVES):
     cat = {}
     for p in catalog or []:
         cat[p["plugin_id"]] = dict(p, open=0, fixed=0, assets=set(), in_catalog=True)
@@ -634,7 +877,9 @@ def plugin_coverage(catalog, rows):
             e = cat[pid] = {"plugin_id": pid, "name": r.get("plugin_name", ""), "product": r.get("source", ""),
                             "family": "", "cves": [], "role": "vulnerable", "open": 0, "fixed": 0,
                             "plugin_type": "", "synopsis": "", "solution": "", "see_also": [],
-                            "assets": set(), "in_catalog": False}
+                            "vpr": None, "assets": set(), "in_catalog": False}
+        if e.get("vpr") is None and r.get("vpr") is not None:
+            e["vpr"] = r["vpr"]  # not in the catalog lookup: take it from the finding
         e["cves"] = sorted(set(e["cves"]) | set(norm_cves(r.get("cves"))))
         if (r.get("state") or "ACTIVE").upper() == "FIXED":
             e["fixed"] += 1
@@ -645,11 +890,11 @@ def plugin_coverage(catalog, rows):
     inventory = [e for e in cat.values() if e["role"] == "inventory"]
     for e in plugins:
         if not e["cves"]:
-            e["cves"] = list(CVES)  # came only from the CVE-filtered findings
+            e["cves"] = list(cves)  # came only from the CVE-filtered findings
         e["status"] = "vulnerable" if e["open"] else ("fixed" if e["fixed"] else "none")
     plugins.sort(key=lambda e: ({"vulnerable": 0, "fixed": 1, "none": 2}[e["status"]],
                                 -(e["open"] + e["fixed"]), e["product"], e["plugin_id"]))
-    by_cve = {c: sum(1 for e in plugins if c in e["cves"]) for c in sorted({c for e in plugins for c in e["cves"]} | set(CVES))}
+    by_cve = {c: sum(1 for e in plugins if c in e["cves"]) for c in sorted({c for e in plugins for c in e["cves"]} | set(cves))}
     summary = {"total": len(plugins), "by_cve": by_cve,
                "with_open": sum(1 for e in plugins if e["status"] == "vulnerable"),
                "fixed_only": sum(1 for e in plugins if e["status"] == "fixed"),
@@ -657,6 +902,100 @@ def plugin_coverage(catalog, rows):
                "not_in_catalog": sum(1 for e in plugins if not e["in_catalog"]),
                "unmatched_rows": unmatched, "catalog": catalog is not None}
     return plugins, inventory, summary
+
+
+# ---------------------------------------------------------------- Node2Shell (related, separate)
+N2S_COMPONENTS = ("nodejs", "brotli", "python", "distro", "container", "other")
+DISTRO_RE = re.compile(r"^(ubuntu|debian|rhel|red hat|centos|oracle linux|alma|rocky|suse|opensuse|amazon linux|alpine|fedora)\b")
+
+
+def n2s_component(name, family="", given="", product=""):
+    """Which product a Node2Shell plugin / finding is about (decides target version and remediation)."""
+    g = str(given or "").strip().lower()
+    if g in N2S_COMPONENTS:
+        return g
+    n, f = (name or "").lower(), (family or "").lower()
+    if prod(product) == "Cloud":
+        return "container"
+    if "unpatched" in n or "local security checks" in f or DISTRO_RE.match(n):
+        return "distro"
+    if "node" in n:
+        return "nodejs"
+    if "brotlicffi" in n or "python" in n or "pypi" in n:
+        return "python"
+    if any(x in n for x in ("envoy", "istio", "curl", "bun ")):
+        return "other"
+    if "brotli" in n:
+        return "brotli"
+    return "other"
+
+
+def n2s_target(comp, v, L):
+    """(label, status) for an installed version of a Node2Shell component."""
+    if comp in ("distro", "other"):
+        return L["tgt_vendor"], "pending"
+    if comp == "container":
+        return L["tgt_image"], "pending"
+    t = parse_version(v)
+    if not t:
+        return L["tgt_unknown"], "unknown"
+    if comp == "nodejs":
+        fx = N2S_FIXED["nodejs"].get((t[0],))
+        if fx:
+            return (L["tgt_ok"], "patched") if t >= fx else (".".join(map(str, fx)), "vulnerable")
+        if N2S_NODE_EOL(t[0]):
+            return L["n2s_tgt_eol"], "eol"
+        return (L["tgt_ok"], "patched") if t[0] > 26 else (L["tgt_unknown"], "unknown")
+    if t < (1, 0, 3):
+        return L["n2s_tgt_na"], "na"
+    table = N2S_FIXED["python" if comp == "python" else "brotli"]
+    fx = table.get(t[:2])
+    if fx:
+        return (L["tgt_ok"], "patched") if t >= fx else (".".join(map(str, fx)), "vulnerable")
+    if t > max(table.values()):
+        return L["tgt_ok"], "patched"
+    # python brotli < 1.2 has no separate fixed line: upgrade to 1.2.1
+    return ((".".join(map(str, N2S_FIXED["python"][(1, 2)])), "vulnerable") if comp == "python"
+            else (L["tgt_unknown"], "unknown"))
+
+
+def n2s_detail(e, vulns, L, me=None):
+    vs = sorted(vulns, key=lambda v: (-(v.get("over") or -999), v["asset"]))
+    open_v = [v for v in vs if v["status"] == "open"]
+    fix_v = [v for v in vs if v["status"] == "remediated"]
+    tr = lambda v: '<tr class="me">' if me and v["asset"] == me else "<tr>"
+
+    def row(v, is_open):
+        cells = (f'<td>{esc(v["asset"])}</td><td>{esc(v.get("ip"))}</td><td>{esc(v.get("fqdn"))}</td>'
+                 f'<td>{esc(prod(v.get("source")))}</td>' + sc_td(v.get("acr"), "acr") + sc_td(v.get("aes"), "aes")
+                 + f'<td>{esc(L["comp_" + v["component"]])}</td>'
+                 f'<td>{esc(v["version"] or "—")}</td>')
+        if is_open:
+            cells += (f'<td><span class="pill s-{v["tstatus"]}">{esc(v["target"])}</span></td><td>{esc(v["state"])}</td>'
+                      f'<td>{esc(v["first_seen"] or L["no_first"])}</td><td>{esc(v["due"])}</td>')
+        else:
+            cells += f'<td>{esc(v["first_seen"] or L["no_first"])}</td><td>{esc(v["fixed"] or "")}</td>'
+        return (tr(v) + cells + f'<td>{esc("" if v["days_open"] is None else v["days_open"])}</td>'
+                + outcome_cell(v, L) + f'<td>{esc(v.get("last_seen"))}</td></tr>')
+
+    base = ("c_asset", "c_ip", "c_fqdn", "c_src", "c_acr", "c_aes", "c_component", "c_inst")
+    vh = "".join(f"<th>{esc(L[k])}</th>" for k in base + ("c_target", "c_state", "c_first", "c_due", "c_daysopen", "c_outcome", "c_last"))
+    fh = "".join(f"<th>{esc(L[k])}</th>" for k in base + ("c_first", "c_fixed", "c_daysopen", "c_outcome", "c_last"))
+    tbl = lambda h, rs: (f'<div class="tablewrap"><table class="sub"><thead><tr>{h}</tr></thead><tbody>{rs}</tbody></table></div>'
+                         if rs else f'<p class="muted">{esc(L["d_empty"])}</p>')
+    info = vpr_line(e, L) + (f'<p><b>{esc(L["d_synopsis"])}:</b> {esc(e["synopsis"])}</p>' if e.get("synopsis") else "") + \
+           (f'<div class="sol"><b>{esc(L["d_solution"])}:</b> {esc(e["solution"])}</div>' if e.get("solution") else "")
+    comp = e.get("component") or "other"
+    remed = "<ol>" + "".join(f"<li>{esc(x)}</li>" for x in L["n2s_rem_" + comp]) + "</ol>"
+    refs = ("" if not e.get("see_also") else f'<p style="font-size:12px"><b>{esc(L["d_refs"])}:</b> '
+            + " · ".join(f'<a href="{esc(u)}" target="_blank" rel="noopener">{esc(u)}</a>' for u in e["see_also"][:6]) + "</p>")
+    mnote, mcls = ((L["mit_open"], "s-pending") if open_v else (L["mit_fixed"], "s-fixed") if fix_v else (L["mit_none"], "s-none"))
+    mit = "<ul>" + "".join(f"<li>{x}</li>" for x in L["n2s_mit"]) + "</ul>"
+    return (f'<div class="detail-in"><div class="dgrid">'
+            f'<div><h4>{esc(L["d_remed"])} <span class="kind">{esc(L["comp_" + comp])}</span></h4>{info}{remed}{refs}</div>'
+            f'<div><h4>{esc(L["d_mitig"])}</h4><p class="mnote"><span class="pill {mcls}">●</span> {esc(mnote)}</p>{mit}</div></div>'
+            f'<h4 class="dv">{esc(L["d_vuln"].format(n=len(open_v)))}</h4>{tbl(vh, "".join(row(v, True) for v in open_v))}'
+            f'<h4 class="df">{esc(L["d_fixed"].format(n=len(fix_v)))}</h4>{tbl(fh, "".join(row(v, False) for v in fix_v))}</div>')
 
 
 # ---------------------------------------------------------------- history ledger
@@ -753,8 +1092,11 @@ def merge_runs(*lists):
                 by_id[r["run_id"]] = r
     runs = sorted(by_id.values(), key=lambda r: r.get("executed_at", ""))
     for r in runs[:-MAX_DETAILED_RUNS]:
-        for f in ("findings", "assets", "plugins", "plugin_meta", "asset_meta"):
+        for f in ("findings", "assets", "plugins", "plugin_meta", "asset_meta", "plugin_vpr", "asset_scores"):
             r.pop(f, None)
+        if isinstance(r.get("n2s"), dict):
+            for f in ("findings", "assets", "plugins", "plugin_meta", "asset_meta", "plugin_vpr", "asset_scores"):
+                r["n2s"].pop(f, None)
     return runs
 
 
@@ -868,7 +1210,9 @@ td.wrap{padding:7px 9px;white-space:normal;min-width:260px;max-width:460px;line-
 .s-remediated,.s-patched,.s-met,.s-fixed_since{background:var(--green)}
 .s-pending,.s-unknown,.s-still_open{background:var(--orange)}
 .s-new{background:var(--accent)}.s-gone{background:var(--purple)}
-.s-at_risk{background:var(--orange)}.s-fixed{background:var(--green)}.s-none{background:var(--muted)}
+.s-at_risk{background:var(--orange)}.s-fixed{background:var(--green)}.s-none{background:var(--muted)}.s-na{background:#8E9496}
+.sc{display:inline-block;min-width:30px;text-align:center;padding:1px 6px;border-radius:4px;font-size:12px;font-weight:700;color:#1d1f20}
+.sc-c{background:var(--red)}.sc-h{background:var(--orange)}.sc-m{background:var(--accent)}.sc-l{background:var(--green)}
 .cve{display:inline-block;padding:0 6px;margin:1px 2px 1px 0;border:1px solid var(--line);border-radius:3px;font-size:11px;color:var(--muted)}
 .ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 input.filter,select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;
@@ -924,20 +1268,64 @@ li.dim{opacity:.45}
 code{background:var(--panel);padding:0 4px;border-radius:3px;font-size:12px}
 table.sub{font-size:12px}table.sub th{position:static;cursor:pointer;background:var(--panel)}
 .tablewrap .tablewrap{border-color:var(--line)}
+.tabs{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;
+background:var(--bg);padding:10px 0 8px;margin-top:12px;border-bottom:1px solid var(--line)}
+.tab{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 14px;border:1px solid var(--line);border-radius:6px;
+background:var(--panel);color:var(--text);text-decoration:none}.tab:hover{border-color:var(--accent)}
+.tab.on{border-color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent);background:var(--panel2)}
+.tab-t{font-weight:700;font-size:15px}.tab-c{color:var(--muted);font-size:12px;flex:1}.tab .badge{padding:3px 10px;font-size:12px}
+.p-none{background:var(--muted)}
+.exp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;justify-content:flex-end;margin-left:auto}
+.exp-l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.exp-b{margin:0;font-weight:600}.exp-b:hover{background:var(--accent);color:#1d1f20}
+.exp-n{flex-basis:100%;text-align:right;color:var(--muted);font-size:11px;line-height:1.4}
+.vb-h{margin:18px 0 8px;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.vb{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.vbt{position:relative;background:var(--panel);border-top:3px solid var(--muted);padding:16px 18px 18px;min-height:112px;
+clip-path:polygon(0 0,calc(100% - 22px) 0,100% 22px,100% 100%,0 100%)}
+.vbt .v{font-size:34px;font-weight:300;line-height:1.1}.vbt .l{margin-top:10px;color:var(--muted);font-size:12px;
+font-weight:600;text-transform:uppercase;letter-spacing:.08em;line-height:1.7}
+.vb-eol{border-top-color:#A51D3A}.vb-bp{border-top-color:var(--red)}.vb-pa{border-top-color:var(--orange)}
+.vb-un{border-top-color:#9A9FA1}.vb-ok{border-top-color:var(--blue)}.vb-na{border-top-color:#5A6062}
+@media (max-width:980px){.vb{grid-template-columns:repeat(3,minmax(0,1fr))}}@media (max-width:520px){.vb{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dd-card{cursor:pointer;transition:transform .1s,border-color .1s}.dd-card:hover{transform:translateY(-1px)}
+.tile.dd-card:hover{border-color:var(--accent)}.dd-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tile.dd-card[aria-pressed="true"]{outline:2px solid var(--accent);background:var(--panel2)}
+.vbt.dd-card[aria-pressed="true"],.hs-c[aria-pressed="true"]{background:var(--panel2);box-shadow:inset 0 -3px 0 var(--accent)}
+.dd-panel{display:none;margin-top:12px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:6px;padding:10px 12px;background:var(--panel2)}
+.dd-panel.open{display:block}.dd-h{display:flex;justify-content:space-between;align-items:center;gap:8px}.dd-h h4{margin:2px 0 8px;font-size:14px}
+.dd-x{margin:0}td.ddw{min-width:340px;max-width:520px}.ddf{margin:3px 0;line-height:1.4}.ddf .pill{font-size:10px;padding:0 6px}
+.s-vb-eol{background:#A51D3A;color:#fff}.s-vb-backport{background:var(--red)}.s-vb-patch{background:var(--orange)}
+.s-vb-unknown{background:#9A9FA1}.s-vb-patched{background:var(--blue)}.s-vb-na{background:#8E9496}
+.hs{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));margin-top:12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px}
+.hs-c{padding:16px 14px 18px;border-left:1px solid var(--line)}.hs-c:first-child{border-left:0}
+.hs-c .v{font-size:34px;font-weight:300;line-height:1.1}.hs-c .l{margin-top:10px;color:var(--muted);font-size:12px;font-weight:600;
+text-transform:uppercase;letter-spacing:.08em;line-height:1.7}.hs-c:hover{background:var(--panel)}
+@media (max-width:1100px){.hs{grid-template-columns:repeat(4,minmax(0,1fr))}.hs-c:nth-child(5){border-left:0}.hs-c:nth-child(n+5){border-top:1px solid var(--line)}}
+@media (max-width:560px){.hs{grid-template-columns:repeat(2,minmax(0,1fr))}.hs-c:nth-child(odd){border-left:0}.hs-c:nth-child(n+3){border-top:1px solid var(--line)}}
+.ctx{display:grid;grid-template-columns:1fr 1fr;gap:36px;margin-top:14px;padding:20px 22px;background:var(--panel2);
+border:1px solid var(--line);border-radius:6px}
+.ctx h3{margin:0 0 10px;color:var(--accent);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.ctx p{margin:0;font-size:16px;line-height:1.6;color:#d9dddf}.ctx ol{margin:0 0 0 22px;padding:0}
+.ctx li{font-size:16px;line-height:1.6;color:#d9dddf;margin:0 0 12px}.ctx li b{color:var(--text)}
+@media (max-width:760px){.ctx{grid-template-columns:1fr;gap:18px}.exp{justify-content:flex-start;margin-left:0}.exp-n{text-align:left}}
+section.trk{margin-top:8px}.sec-h{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;
+margin-top:22px;padding:12px 16px;background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:6px}
+.sec-t{margin:0!important;font-size:21px!important;color:var(--text)!important}
 @media print{body{background:var(--bg);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 th{position:static}.tablewrap{overflow:visible}input.filter{display:none}
-h2{break-after:avoid}.tile,tr,.chartbox{break-inside:avoid}@page{margin:0}.wrap{padding:14mm 10mm}
+section.trk[hidden]{display:block!important}section.trk+section.trk{break-before:page}.tabs{position:static}.exp{display:none}.ctx,.vb,.hs{break-inside:avoid}.dd-panel{display:none!important}.tab-hint{display:none}h2{break-after:avoid}.tile,tr,.chartbox{break-inside:avoid}@page{margin:0}.wrap{padding:14mm 10mm}
 tr.detail.has{display:table-row}.fold-tip{display:none!important}.scn-panel{display:block}.scn-panel[data-scn=all]{display:none}.view-p{display:none}.view-a{display:block!important}.detail-in{position:static;width:auto}tr.detail.has>td{break-inside:auto}.btn,select,.hint,.caret{display:none}}
 """
 
 JS = r"""
 (function(){
+const ORIG='<!doctype html>\n'+document.documentElement.outerHTML; // as rendered, before any script changes
 const H=JSON.parse(document.getElementById('run-history').textContent);
 const L=JSON.parse(document.getElementById('i18n').textContent);
 const CUR=document.body.dataset.run;
 const runs=H.runs||[];
 const byId=Object.fromEntries(runs.map(r=>[r.run_id,r]));
-const cur=byId[CUR];
 function fmt(ts){try{return new Date(ts).toLocaleString(L.html_lang||undefined);}catch(e){try{return new Date(ts).toLocaleString()}catch(_){return ts}}}
 document.querySelectorAll('[data-ts]').forEach(e=>e.textContent=fmt(e.dataset.ts));
 function cmp(c,b){const cf=c.findings||{},bf=b.findings||{};const r={new:[],fixed_since:[],regressed:[],still_open:[],gone:[]};
@@ -947,61 +1335,66 @@ function cmp(c,b){const cf=c.findings||{},bf=b.findings||{};const r={new:[],fixe
  for(const k in bf){if(!(k in cf)&&bf[k]==='o')r.gone.push(k)}return r}
 const KP=[['open','k_open',false],['remediated','k_rem',true],['rate','k_rate',true],['breached','k_breach',false],
  ['exposed_assets','k_exposed',false],['mttr','k_mttr',false],['unscanned','k_unscanned',false]];
+const SCB={vpr:[[9,'c'],[7,'h'],[4,'m'],[0,'l']],acr:[[9,'c'],[7,'h'],[4,'m'],[0,'l']],aes:[[650,'h'],[350,'m'],[0,'l']]};
+function sc(x,k){if(x===null||x===undefined||x===''||isNaN(Number(x)))return '<span class="muted">—</span>';x=Number(x);
+ const b=(SCB[k].find(z=>x>=z[0])||[0,'l'])[1];return '<span class="sc sc-'+b+'">'+(k==='vpr'?x.toFixed(1):Math.round(x))+'</span>'}
+function scd(x,k){return '<td data-s="'+(x==null||x===''?-1:x)+'">'+sc(x,k)+'</td>'}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function render(baseId){
- const box=document.getElementById('cmp-body');
- const base=byId[baseId];
- if(!cur||!base){box.innerHTML='<p class="muted">'+esc(L.no_prev)+'</p>';return}
+function render(box,baseId){
+ const key=box.dataset.key||'',pfx=box.dataset.pfx;let KL={};try{KL=JSON.parse(box.dataset.kl||'{}')}catch(e){}
+ const V=r=>!r?null:(key?(r[key]&&typeof r[key]==='object'?r[key]:null):r);
+ const body=box.querySelector('.cmp-body');
+ const curR=byId[CUR],baseR=byId[baseId],cur=V(curR),base=V(baseR);
+ if(!cur||!base){body.innerHTML='<p class="muted">'+esc(box.dataset.empty||L.no_prev)+'</p>';return}
  let notes='';
- if((base.skill_version||'?')!==(cur.skill_version||'?'))notes+='<div class="note">'+esc(L.ver_mismatch.replace('{a}',base.skill_version||'?').replace('{b}',cur.skill_version||'?'))+'</div>';
- if(base.sla_days!==cur.sla_days)notes+='<div class="note">'+esc(L.sla_mismatch.replace('{a}',base.sla_days).replace('{b}',cur.sla_days))+'</div>';
- if(!!base.demo!==!!cur.demo)notes+='<div class="note">'+esc(L.demo_mismatch)+'</div>';
+ if((baseR.skill_version||'?')!==(curR.skill_version||'?'))notes+='<div class="note">'+esc(L.ver_mismatch.replace('{a}',baseR.skill_version||'?').replace('{b}',curR.skill_version||'?'))+'</div>';
+ if(baseR.sla_days!==curR.sla_days)notes+='<div class="note">'+esc(L.sla_mismatch.replace('{a}',baseR.sla_days).replace('{b}',curR.sla_days))+'</div>';
+ if(!!baseR.demo!==!!curR.demo)notes+='<div class="note">'+esc(L.demo_mismatch)+'</div>';
  let t='<div class="tiles">';
  for(const [k,lab,good] of KP){const a=base.kpis?.[k],b=cur.kpis?.[k];
   let d='';if(a!=null&&b!=null){const x=Math.round((b-a)*10)/10;const cls=x>0?'up':x<0?'down':'flat';
    d='<div class="d '+(good?'good ':'')+cls+'">'+(x>0?'▲ +':x<0?'▼ ':'= ')+x+(k==='rate'?' pp':'')+' vs '+esc(a)+'</div>'}
-  t+='<div class="tile"><div class="v">'+(b==null?'—':esc(b)+(k==='rate'?'%':''))+'</div><div class="l">'+esc(L[lab])+'</div>'+d+'</div>'}
+  t+='<div class="tile"><div class="v">'+(b==null?'—':esc(b)+(k==='rate'?'%':''))+'</div><div class="l">'+esc(KL[lab]||L[lab])+'</div>'+d+'</div>'}
  t+='</div>';
- if(!base.findings){box.innerHTML=notes+t+'<p class="muted">'+esc(L.kpi_only)+'</p>';return}
+ if(!base.findings){body.innerHTML=notes+t+'<p class="muted">'+esc(L.kpi_only)+'</p>';return}
  const r=cmp(cur,base);const order=['new','fixed_since','regressed','still_open','gone'];
  const PM=Object.assign({},base.plugin_meta||{},cur.plugin_meta||{}),AM=Object.assign({},base.asset_meta||{},cur.asset_meta||{});
+ const PV=Object.assign({},base.plugin_vpr||{},cur.plugin_vpr||{}),AS=Object.assign({},base.asset_scores||{},cur.asset_scores||{});
  const TC={new:'t-accent',fixed_since:'t-green',regressed:'t-red',still_open:'t-orange',gone:'t-purple',all:''};
  const all=[];for(const k of order)for(const key of r[k])all.push([k,key]);r.all=all.map(x=>x[1]);
  const card=k=>{const n=r[k].length;return '<div class="tile scn-card '+TC[k]+(n?'':' zero')+'" role="button" tabindex="0" aria-pressed="false" data-scn="'+k+'"><div class="v">'+n+'</div><div class="l">'+esc(k==='all'?L.cmp_all:L[k])+'</div></div>'};
  let c='<h3>'+esc(L.cmp_total.replace('{n}',all.length))+'</h3><p class="hint">'+esc(L.cmp_click)+'</p><div class="tiles scn">'+order.map(card).join('')+card('all')+'</div>';
- const chip=p=>{const m=PM[p]||[];return '<div class="pchip"><b>'+esc(p)+'</b>'+(m[1]?' · '+esc(m[1]):'')+(m[0]?' · '+esc(m[0]):'')+'</div>'};
+ const chip=p=>{const m=PM[p]||[];return '<div class="pchip"><b>'+esc(p)+'</b>'+(PV[p]!=null?' '+sc(PV[p],'vpr'):'')+(m[1]?' · '+esc(m[1]):'')+(m[0]?' · '+esc(m[0]):'')+'</div>'};
  function panel(k){const items=k==='all'?all:r[k].map(x=>[k,x]);
   if(!items.length)return '<div class="scn-panel" data-scn="'+k+'"><p class="muted">'+esc(L.scn_empty)+'</p></div>';
   const byA={},byP={};for(const [kk,key] of items){const i=key.indexOf('|'),a=key.slice(0,i),p=key.slice(i+1);
    (byA[a]=byA[a]||[]).push([kk,p]);(byP[p]=byP[p]||[]).push([kk,a])}
   const pill=kk=>k==='all'?'<span class="pill s-'+kk+'">'+esc(L[kk])+'</span> ':'';
+  const id=pfx+'-cmp-'+k;
   let ra='';for(const a of Object.keys(byA).sort()){const ps=byA[a];const prods=[...new Set(ps.map(x=>(PM[x[1]]||[])[1]).filter(Boolean))];
-   ra+='<tr data-prod="'+esc(prods.join(' '))+'"><td>'+esc(a)+'</td><td>'+esc(AM[a]||'')+'</td><td>'+esc(prods.join(', '))+'</td><td data-s="'+ps.length+'">'+ps.length+'</td><td class="wrap">'+ps.map(x=>'<div>'+pill(x[0])+chip(x[1])+'</div>').join('')+'</td></tr>'}
+   ra+='<tr data-prod="'+esc(prods.join(' '))+'"><td>'+esc(a)+'</td><td>'+esc(AM[a]||'')+'</td>'+scd((AS[a]||[])[0],'acr')+scd((AS[a]||[])[1],'aes')+'<td>'+esc(prods.join(', '))+'</td><td data-s="'+ps.length+'">'+ps.length+'</td><td class="wrap">'+ps.map(x=>'<div>'+pill(x[0])+chip(x[1])+'</div>').join('')+'</td></tr>'}
   let rp='';for(const p of Object.keys(byP).sort()){const as=byP[p];const m=PM[p]||[];
-   rp+='<tr data-prod="'+esc(m[1]||'')+'"><td>'+esc(p)+'</td><td>'+esc(m[1]||'')+'</td><td class="wrap">'+esc(m[0]||'')+'</td><td data-s="'+as.length+'">'+as.length+'</td><td class="wrap">'+as.map(x=>pill(x[0])+'<span class="achip">'+esc(x[1])+(AM[x[1]]?' <span class="muted">'+esc(AM[x[1]])+'</span>':'')+'</span>').join(' ')+'</td></tr>'}
+   rp+='<tr data-prod="'+esc(m[1]||'')+'"><td>'+esc(p)+'</td><td>'+esc(m[1]||'')+'</td>'+scd(PV[p],'vpr')+'<td class="wrap">'+esc(m[0]||'')+'</td><td data-s="'+as.length+'">'+as.length+'</td><td class="wrap">'+as.map(x=>pill(x[0])+'<span class="achip">'+esc(x[1])+(AM[x[1]]?' <span class="muted">'+esc(AM[x[1]])+'</span>':'')+'</span>').join(' ')+'</td></tr>'}
   const prods=[...new Set(items.map(x=>(PM[x[1].slice(x[1].indexOf('|')+1)]||[])[1]).filter(Boolean))].sort();
-  const ps='<select data-t="cmp-'+k+'-a cmp-'+k+'-p" data-f="prod"><option value="">'+esc(L.prod_all)+'</option>'+prods.map(x=>'<option>'+esc(x)+'</option>').join('')+'</select>';
+  const ps='<select data-t="'+id+'-a '+id+'-p" data-f="prod"><option value="">'+esc(L.prod_all)+'</option>'+prods.map(x=>'<option>'+esc(x)+'</option>').join('')+'</select>';
   return '<div class="scn-panel" data-scn="'+k+'"><h4><span class="pill s-'+(k==='all'?'none':k)+'">'+esc(k==='all'?L.cmp_all:L[k])+'</span> '+items.length+' · '+Object.keys(byA).length+' '+esc(L.c_assets.toLowerCase())+' · '+Object.keys(byP).length+' '+esc(L.c_plugins.toLowerCase())+'</h4>'
    +'<p class="muted" style="font-size:12px">'+esc(L[k+'_d'])+'</p>'
    +'<div class="ctrls"><span class="seg"><button type="button" class="btn on" data-view="a">'+esc(L.by_asset)+'</button><button type="button" class="btn" data-view="p">'+esc(L.by_plugin)+'</button></span>'+ps
-   +'<input class="filter" data-t="cmp-'+k+'-a cmp-'+k+'-p" placeholder="'+esc(L.search)+'"></div>'
-   +'<div class="view-a"><div class="tablewrap"><table id="cmp-'+k+'-a"><thead><tr><th>'+esc(L.c_asset)+'</th><th>'+esc(L.c_ip)+'</th><th>'+esc(L.c_product)+'</th><th>'+esc(L.c_findings)+'</th><th>'+esc(L.c_plugins)+'</th></tr></thead><tbody>'+ra+'</tbody></table></div></div>'
-   +'<div class="view-p" hidden><div class="tablewrap"><table id="cmp-'+k+'-p"><thead><tr><th>'+esc(L.c_plugin)+'</th><th>'+esc(L.c_product)+'</th><th>'+esc(L.c_name)+'</th><th>'+esc(L.c_findings)+'</th><th>'+esc(L.c_assets)+'</th></tr></thead><tbody>'+rp+'</tbody></table></div></div></div>'}
- box.innerHTML=notes+t+c+[...order,'all'].map(panel).join('')+'<p class="muted" style="font-size:12px">'+esc(L.gone_note)+'</p>';
- const cards=box.querySelectorAll('.scn-card');
+   +'<input class="filter" data-t="'+id+'-a '+id+'-p" placeholder="'+esc(L.search)+'"></div>'
+   +'<div class="view-a"><div class="tablewrap"><table id="'+id+'-a"><thead><tr><th>'+esc(L.c_asset)+'</th><th>'+esc(L.c_ip)+'</th><th>'+esc(L.c_acr)+'</th><th>'+esc(L.c_aes)+'</th><th>'+esc(L.c_product)+'</th><th>'+esc(L.c_findings)+'</th><th>'+esc(L.c_plugins)+'</th></tr></thead><tbody>'+ra+'</tbody></table></div></div>'
+   +'<div class="view-p" hidden><div class="tablewrap"><table id="'+id+'-p"><thead><tr><th>'+esc(L.c_plugin)+'</th><th>'+esc(L.c_product)+'</th><th>'+esc(L.c_vpr)+'</th><th>'+esc(L.c_name)+'</th><th>'+esc(L.c_findings)+'</th><th>'+esc(L.c_assets)+'</th></tr></thead><tbody>'+rp+'</tbody></table></div></div></div>'}
+ body.innerHTML=notes+t+c+[...order,'all'].map(panel).join('')+'<p class="muted" style="font-size:12px">'+esc(L.gone_note)+'</p>';
+ const cards=body.querySelectorAll('.scn-card');
  function pick(k){cards.forEach(x=>{const on=x.dataset.scn===k&&x.getAttribute('aria-pressed')!=='true';x.setAttribute('aria-pressed',on?'true':'false')});
   const act=[...cards].find(x=>x.getAttribute('aria-pressed')==='true');
-  box.querySelectorAll('.scn-panel').forEach(pn=>pn.classList.toggle('open',!!act&&pn.dataset.scn===act.dataset.scn));
-  if(act)box.querySelector('.scn-panel.open').scrollIntoView({block:'nearest',behavior:'smooth'})}
+  body.querySelectorAll('.scn-panel').forEach(pn=>pn.classList.toggle('open',!!act&&pn.dataset.scn===act.dataset.scn));
+  if(act)body.querySelector('.scn-panel.open').scrollIntoView({block:'nearest',behavior:'smooth'})}
  cards.forEach(x=>{x.addEventListener('click',()=>pick(x.dataset.scn));x.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(x.dataset.scn)}})});
- box.querySelectorAll('.scn-panel').forEach(pn=>pn.querySelectorAll('[data-view]').forEach(bt=>bt.addEventListener('click',()=>{
+ body.querySelectorAll('.scn-panel').forEach(pn=>pn.querySelectorAll('[data-view]').forEach(bt=>bt.addEventListener('click',()=>{
   pn.querySelectorAll('[data-view]').forEach(z=>z.classList.toggle('on',z===bt));
   pn.querySelector('.view-a').hidden=bt.dataset.view!=='a';pn.querySelector('.view-p').hidden=bt.dataset.view!=='p'})));
  wire();
 }
-const sel=document.getElementById('cmp-sel');
-if(sel){sel.addEventListener('change',()=>render(sel.value));render(sel.value)}
-else{document.getElementById('cmp-body').innerHTML='<p class="muted">'+esc(L.no_prev)+'</p>'}
 function applyF(tid){const tb=document.getElementById(tid);if(!tb)return;
  const cs=[...document.querySelectorAll('[data-t]')].filter(c=>c.dataset.t.split(' ').includes(tid));
  [...tb.tBodies[0].rows].forEach(tr=>{if(tr.classList.contains('detail'))return;let ok=true;
@@ -1014,28 +1407,79 @@ function applyF(tid){const tb=document.getElementById(tid);if(!tb)return;
 function wire(){document.querySelectorAll('[data-t]').forEach(c=>{if(c.dataset.w)return;c.dataset.w=1;
  c.addEventListener(c.tagName==='SELECT'?'change':'input',()=>c.dataset.t.split(' ').forEach(applyF))});
  document.querySelectorAll('th').forEach(th=>{if(th.dataset.w)return;th.dataset.w=1;th.addEventListener('click',()=>{
-  const tb=th.closest('table').tBodies[0];const i=[...th.parentNode.children].indexOf(th);const asc=th.dataset.asc!=='1';th.dataset.asc=asc?'1':'0';
+  const tb=th.closest('table').tBodies[0];if(!tb)return;const i=[...th.parentNode.children].indexOf(th);const asc=th.dataset.asc!=='1';th.dataset.asc=asc?'1':'0';
   const main=[...tb.rows].filter(r=>!r.classList.contains('detail'));
   const det=new Map(main.map(r=>{const d=r.nextElementSibling;return [r,d&&d.classList.contains('detail')?d:null]}));
   main.sort((a,b)=>{const x=a.cells[i]?.dataset.s??a.cells[i]?.textContent??'',y=b.cells[i]?.dataset.s??b.cells[i]?.textContent??'';
    const nx=parseFloat(x),ny=parseFloat(y);const r=(!isNaN(nx)&&!isNaN(ny))?nx-ny:x.localeCompare(y);return asc?r:-r})
    .forEach(r=>{tb.appendChild(r);const d=det.get(r);if(d)tb.appendChild(d)})})})}
+function sizeD(){document.querySelectorAll('table.dtbl').forEach(t=>{const w=t.closest('.tablewrap');if(w.clientWidth)w.style.setProperty('--dw',(w.clientWidth-3)+'px')})}
+document.querySelectorAll('.cmpbox').forEach(box=>{const sel=box.querySelector('.cmp-sel');
+ if(sel){sel.addEventListener('change',()=>render(box,sel.value));render(box,sel.value)}
+ else box.querySelector('.cmp-body').innerHTML='<p class="muted">'+esc(box.dataset.empty||L.no_prev)+'</p>'});
 wire();
 function toggle(tr,open){const d=tr.nextElementSibling;if(!d||!d.classList.contains('detail'))return;
  const o=open===undefined?!d.classList.contains('open'):open;d.classList.toggle('open',o);tr.setAttribute('aria-expanded',o?'true':'false');const cr=tr.querySelector('.caret');if(cr)cr.textContent=o?'▾':'▸'}
 document.querySelectorAll('tr.pl-row').forEach(tr=>{tr.addEventListener('click',e=>{if(e.target.closest('a'))return;toggle(tr)});
  tr.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle(tr)}})});
-window.addEventListener('beforeprint',()=>document.querySelectorAll('details.fold').forEach(d=>d.open=true));
-function sizeD(){document.querySelectorAll('#pl-tbl,#trk-tbl').forEach(t=>{const w=t.closest('.tablewrap');w.style.setProperty('--dw',(w.clientWidth-3)+'px')})}
-sizeD();window.addEventListener('resize',sizeD);
 document.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>{const o=b.dataset.act==='expand';
  b.closest('.panel').querySelectorAll('tr.pl-row').forEach(tr=>{if(tr.style.display!=='none')toggle(tr,o)})}));
+// one section per CVE, switched from the tabs; print shows them all
+const secs=[...document.querySelectorAll('section.trk')];let curSec=null;
+function show(id){curSec=id;secs.forEach(s=>s.hidden=s.id!==id);
+ document.querySelectorAll('[data-tab]').forEach(b=>{const on=b.dataset.tab===id;b.classList.toggle('on',on);b.setAttribute('aria-current',on?'true':'false')});sizeD()}
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();show(b.dataset.tab);
+ try{history.replaceState(null,'','#'+b.dataset.tab)}catch(_){}
+ const n=document.querySelector('nav.tabs');if(n&&n.getBoundingClientRect().top<0)n.scrollIntoView()}));
+const h0=(location.hash||'').slice(1);if(secs.length)show(secs.some(s=>s.id===h0)?h0:secs[0].id);
+window.addEventListener('resize',sizeD);
+window.addEventListener('beforeprint',()=>{secs.forEach(s=>s.hidden=false);document.querySelectorAll('details.fold').forEach(d=>d.open=true)});
+window.addEventListener('afterprint',()=>{if(curSec)show(curSec)});
+// tile drill-down: assets or findings behind each KPI / version-status tile
+const DD={};document.querySelectorAll('script.dd-data').forEach(x=>{try{DD[x.dataset.trk]=JSON.parse(x.textContent)}catch(e){}});
+const DDF={k_php:['a',x=>true],k_exposed:['a',x=>x.st==='open'||x.st==='at_risk'],k_confirmed:['a',x=>x.open>0],
+ k_unscanned:['a',x=>x.uns],k_open:['f',x=>x.st==='open'],k_rem:['f',x=>x.st==='remediated'],k_rate:['f',x=>true],
+ k_mttr:['f',x=>x.st==='remediated'&&x.days!==null],k_breach:['f',x=>x.ocls==='breached']};
+const pl=(c,t)=>'<span class="pill s-'+esc(c)+'">'+esc(t)+'</span>';
+function ddShow(card){const g=card.closest('[data-ddg]'),trk=g.dataset.trk,d=DD[trk],panel=document.getElementById(g.dataset.ddg+'-dd');
+ const on=card.getAttribute('aria-pressed')!=='true';
+ document.querySelectorAll('section.trk#'+card.closest('section').id+' .dd-card').forEach(x=>x.setAttribute('aria-pressed','false'));
+ document.querySelectorAll('section.trk#'+card.closest('section').id+' .dd-panel').forEach(p=>{p.classList.remove('open');p.innerHTML=''});
+ if(!on||!d||!panel)return;card.setAttribute('aria-pressed','true');
+ const key=card.dataset.dd,f=key.startsWith('vb_')?['a',x=>x.vb===key.slice(3)]:DDF[key];if(!f)return;
+ const lab=(card.querySelector('.l')||{}).textContent||'',tid=g.dataset.ddg+'-tbl';
+ const byA={};d.findings.forEach(x=>(byA[x.a]=byA[x.a]||[]).push(x));
+ const items=(f[0]==='a'?d.assets:d.findings).filter(f[1]);
+ let head,rows;
+ if(f[0]==='a'){
+  head=['c_asset','c_ip','c_fqdn','c_src','c_acr','c_aes','c_ver','c_vgroup','c_findings','c_astatus','c_open_n','c_fixed_n','c_last'];
+  rows=items.map(x=>'<tr><td><b>'+esc(x.a)+'</b></td><td>'+esc(x.ip)+'</td><td>'+esc(x.fqdn)+'</td><td>'+esc(x.src)+'</td>'+scd(x.acr,'acr')+scd(x.aes,'aes')+'<td>'+esc(x.ver||'—')+'</td><td>'+pl('vb-'+x.vb,x.vbl)+'</td><td class="wrap ddw">'
+   +((byA[x.a]||[]).map(v=>'<div class="ddf">'+pl(v.st,L[v.st])+' <b>'+esc(v.pid)+'</b> '+(v.vpr!=null?sc(v.vpr,'vpr')+' ':'')+esc(v.name)+'<br><span class="muted">'+esc((d.lab||{}).c_ver||L.c_ver)+': '+esc(v.ver||'—')+' → '+esc(v.tgt)+' · '+esc(L.c_due)+' '+esc(v.due)+' · '+esc(v.out)+'</span></div>').join('')||'<span class="muted">'+esc(L.dd_nofind)+'</span>')
+   +'</td><td>'+pl(x.st,x.stl)+'</td><td data-s="'+x.open+'">'+x.open+'</td><td data-s="'+x.fixed+'">'+x.fixed+'</td><td>'+esc(x.last||'—')+(x.uns?' '+pl('unknown',L.dd_unscanned):'')+'</td></tr>').join('')}
+ else{
+  head=['c_asset','c_ip','c_src','c_acr','c_aes','c_plugin','c_vpr','c_name','c_cves','c_ver','c_target','c_state','c_first','c_due','c_fixed','c_daysopen','c_outcome','c_last'];
+  rows=items.map(x=>'<tr><td><b>'+esc(x.a)+'</b></td><td>'+esc(x.ip)+'</td><td>'+esc(x.src)+'</td>'+scd(x.acr,'acr')+scd(x.aes,'aes')+'<td>'+esc(x.pid)+'</td>'+scd(x.vpr,'vpr')+'<td class="wrap">'+esc(x.name)+'</td><td>'+x.cves.map(c=>'<span class="cve">'+esc(c)+'</span>').join('')+'</td><td>'+esc(x.ver||'—')+'</td><td>'+pl(x.tcls,x.tgt)+'</td><td>'+esc(x.state)+'</td><td>'+esc(x.fs||L.no_first)+'</td><td>'+esc(x.due)+'</td><td>'+esc(x.fx)+'</td><td data-s="'+(x.days??'')+'">'+esc(x.days??'')+'</td><td>'+pl(x.ocls,x.out)+'</td><td>'+esc(x.last)+'</td></tr>').join('')}
+ const n=(f[0]==='a'?(items.length===1?L.dd_asset1:L.dd_assets):(items.length===1?L.dd_finding1:L.dd_findings)).replace('{n}',items.length);
+ panel.innerHTML='<div class="dd-h"><h4>'+esc(lab)+' <span class="muted">· '+esc(n)+'</span></h4><button type="button" class="btn dd-x">'+esc(L.dd_close)+' ✕</button></div>'
+  +(items.length?'<input class="filter" data-t="'+tid+'" placeholder="'+esc(L.search)+'"><div class="tablewrap"><table id="'+tid+'" class="sub"><thead><tr>'+head.map(h=>'<th>'+esc((d.lab||{})[h]||L[h]||h)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+  :'<p class="muted">'+esc(L.dd_empty)+'</p>');
+ panel.classList.add('open');panel.querySelector('.dd-x').addEventListener('click',()=>ddShow(card));wire();
+ panel.scrollIntoView({block:'nearest',behavior:'smooth'})}
+document.querySelectorAll('.dd-card').forEach(c=>{c.addEventListener('click',()=>ddShow(c));
+ c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ddShow(c)}})});
+// export: same stamped names as the files the skill writes (report_<stamp>.html / history_<stamp>.json)
+function dl(name,text,type){const b=new Blob([text],{type:type});const u=URL.createObjectURL(b);const a=document.createElement('a');
+ a.href=u;a.download=name;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove()},1500)}
+document.querySelectorAll('[data-export]').forEach(b=>b.addEventListener('click',()=>{const d=document.body.dataset;
+ if(b.dataset.export==='html')dl(d.htmlName||'report.html',ORIG,'text/html;charset=utf-8');
+ else dl(d.jsonName||'history.json',JSON.stringify({format:H.format,skill:H.skill||'php2shell-tenable-tracker',runs:runs},null,1),'application/json;charset=utf-8')}));
 })();
 """
 
 
-def tile(v, label, cls="", sub=""):
-    return (f'<div class="tile {cls}"><div class="v">{esc(v)}</div><div class="l">{esc(label)}</div>'
+def tile(v, label, cls="", sub="", dd=None):
+    act = (f' dd-card" role="button" tabindex="0" aria-pressed="false" data-dd="{dd}' if dd else "")
+    return (f'<div class="tile {cls}{act}"><div class="v">{esc(v)}</div><div class="l">{esc(label)}</div>'
             + (f'<div class="d muted">{esc(sub)}</div>' if sub else "") + "</div>")
 
 
@@ -1067,7 +1511,8 @@ def plugin_detail(e, vulns, L, kind, me=None):
         tgt, tcls = target_version(v.get("php_version"), kind, L)
         vst = version_status(v.get("php_version"))
         return (tr(v) + f'<td>{esc(v["asset"])}</td><td>{esc(v.get("ip"))}</td><td>{esc(v.get("fqdn"))}</td>'
-                f'<td>{esc(prod(v.get("source")))}</td><td>{esc(v.get("port") or "")}</td>'
+                f'<td>{esc(prod(v.get("source")))}</td>' + sc_td(v.get("acr"), "acr") + sc_td(v.get("aes"), "aes")
+                + f'<td>{esc(v.get("port") or "")}</td>'
                 f'<td>{esc(v.get("php_version") or "—")} <span class="pill s-{vst}">{esc(L["st_"+vst])}</span></td>'
                 f'<td><span class="pill s-{tcls}">{esc(tgt)}</span></td><td>{esc(v.get("state"))}</td>'
                 f'<td>{esc(v["first_seen"] or L["no_first"])}</td><td>{esc(v["due"])}</td>'
@@ -1076,22 +1521,23 @@ def plugin_detail(e, vulns, L, kind, me=None):
 
     def frow(v):
         return (tr(v) + f'<td>{esc(v["asset"])}</td><td>{esc(v.get("ip"))}</td><td>{esc(v.get("fqdn"))}</td>'
-                f'<td>{esc(prod(v.get("source")))}</td><td>{esc(v.get("php_version") or "—")}</td>'
+                f'<td>{esc(prod(v.get("source")))}</td>' + sc_td(v.get("acr"), "acr") + sc_td(v.get("aes"), "aes")
+                + f'<td>{esc(v.get("php_version") or "—")}</td>'
                 f'<td>{esc(v["first_seen"] or L["no_first"])}</td><td>{esc(v["fixed"] or "")}</td>'
                 f'<td>{esc("" if v["days_open"] is None else v["days_open"])}</td>' + outcome_cell(v, L)
                 + f'<td>{esc(v.get("last_seen"))}</td></tr>')
 
-    vh = "".join(f"<th>{esc(L[k])}</th>" for k in ("c_asset", "c_ip", "c_fqdn", "c_src", "c_port", "c_ver",
+    vh = "".join(f"<th>{esc(L[k])}</th>" for k in ("c_asset", "c_ip", "c_fqdn", "c_src", "c_acr", "c_aes", "c_port", "c_ver",
                                                     "c_target", "c_state", "c_first", "c_due", "c_daysopen",
                                                     "c_outcome", "c_last"))
-    fh = "".join(f"<th>{esc(L[k])}</th>" for k in ("c_asset", "c_ip", "c_fqdn", "c_src", "c_ver", "c_first",
+    fh = "".join(f"<th>{esc(L[k])}</th>" for k in ("c_asset", "c_ip", "c_fqdn", "c_src", "c_acr", "c_aes", "c_ver", "c_first",
                                                     "c_fixed", "c_daysopen", "c_outcome", "c_last"))
     vt = (f'<div class="tablewrap"><table class="sub"><thead><tr>{vh}</tr></thead><tbody>{"".join(map(vrow, open_v))}</tbody></table></div>'
           if open_v else f'<p class="muted">{esc(L["d_empty"])}</p>')
     ft = (f'<div class="tablewrap"><table class="sub"><thead><tr>{fh}</tr></thead><tbody>{"".join(map(frow, fix_v))}</tbody></table></div>'
           if fix_v else f'<p class="muted">{esc(L["d_empty"])}</p>')
 
-    info = ""
+    info = vpr_line(e, L)
     if e.get("synopsis"):
         info += f'<p><b>{esc(L["d_synopsis"])}:</b> {esc(e["synopsis"])}</p>'
     if e.get("solution"):
@@ -1129,9 +1575,11 @@ def prod_select(tid, values, L):
     return f'<select data-t="{tid}" data-f="prod" aria-label="{esc(L["c_product"])}">{opts}</select>'
 
 
-def plugin_section(P, L, A):
+def plugin_section(tk):
+    P, L, A, pid = tk["P"], tk["L"], tk["A"], tk["id"]
     plugins, inventory, s = P
     cves = list(s["by_cve"])
+    tid = f"{pid}-pl-tbl"
     by_pid = {}
     for v in A["vulns"]:
         by_pid.setdefault(str(v.get("plugin_id") or ""), []).append(v)
@@ -1144,35 +1592,36 @@ def plugin_section(P, L, A):
         notes += f'<div class="note">{esc(L["pl_nocat"])}</div>'
     if s["unmatched_rows"]:
         notes += f'<div class="note">{esc(L["pl_unmatched"].format(n=s["unmatched_rows"]))}</div>'
+    notes += f'<p class="muted" style="font-size:12px">{esc(L["sc_note"])}</p>' + sc_missing_note(tk.get("sc"), ("vpr",), L)
     notes += f'<p class="hint">{esc(L["pl_click"])}</p>'
     opts = f'<option value="">{esc(L["pl_all"])}</option>' + "".join(f'<option>{esc(c)}</option>' for c in cves)
     sopts = f'<option value="">{esc(L["pl_any"])}</option>' + "".join(
         f'<option value="{k}">{esc(L["ps_" + k])}</option>' for k in ("vulnerable", "fixed", "none"))
     prods = sorted({prod(e["product"]) for e in plugins if prod(e["product"])})
-    ctrls = (f'<div class="ctrls">{prod_select("pl-tbl", prods, L)}'
-             f'<select data-t="pl-tbl" data-f="cves">{opts}</select><select data-t="pl-tbl" data-f="st">{sopts}</select>'
-             f'<input class="filter" data-t="pl-tbl" placeholder="{esc(L["search"])}">'
+    ctrls = (f'<div class="ctrls">{prod_select(tid, prods, L)}'
+             + (f'<select data-t="{tid}" data-f="cves">{opts}</select>' if len(cves) > 1 else "")
+             + f'<select data-t="{tid}" data-f="st">{sopts}</select>'
+             f'<input class="filter" data-t="{tid}" placeholder="{esc(L["search"])}">'
              f'<button type="button" class="btn" data-act="expand">{esc(L["pl_expand"])}</button>'
              f'<button type="button" class="btn" data-act="collapse">{esc(L["pl_collapse"])}</button></div>')
     trs = ""
     for e in plugins:
         extra = "" if e["in_catalog"] else f' <span class="muted" title="{esc(L["pl_extra"])}">*</span>'
-        kind = plugin_kind(e)
         pr = prod(e["product"])
         has = " has" if (e["open"] or e["fixed"]) else ""
         trs += (f'<tr class="pl-row" tabindex="0" aria-expanded="false" data-prod="{esc(pr)}" '
                 f'data-cves="{esc(" ".join(e["cves"]))}" data-st="{e["status"]}">'
                 f'<td><span class="caret">▸</span> {esc(e["plugin_id"])}{extra}</td><td>{esc(pr)}</td>'
-                f'<td class="wrap">{esc(e["name"])}</td><td>{esc(e["family"])}</td>'
-                f'<td>{"".join(f"<span class=cve>{esc(c)}</span>" for c in e["cves"])}</td>'
-                f'<td data-s="{e["open"]}">{e["open"]}</td><td data-s="{e["fixed"]}">{e["fixed"]}</td>'
+                f'<td class="wrap">{esc(e["name"])}</td><td>{esc(tk["family"](e))}</td>'
+                f'<td>{"".join(f"<span class=cve>{esc(c)}</span>" for c in e["cves"])}</td>' + sc_td(e.get("vpr"), "vpr")
+                + f'<td data-s="{e["open"]}">{e["open"]}</td><td data-s="{e["fixed"]}">{e["fixed"]}</td>'
                 f'<td data-s="{len(e["assets"])}">{len(e["assets"])}</td>'
                 f'<td><span class="pill s-{e["status"]}">{esc(L["ps_" + e["status"]])}</span></td></tr>'
-                f'<tr class="pl-detail detail{has}"><td colspan="9">'
-                + plugin_detail(e, by_pid.get(e["plugin_id"], []), L, kind) + '</td></tr>')
-    table = (f'<div class="tablewrap"><table id="pl-tbl"><thead><tr><th>{esc(L["c_plugin"])}</th>'
+                f'<tr class="pl-detail detail{has}"><td colspan="10">'
+                + tk["detail"](e, by_pid.get(e["plugin_id"], []), L) + '</td></tr>')
+    table = (f'<div class="tablewrap"><table id="{tid}" class="dtbl"><thead><tr><th>{esc(L["c_plugin"])}</th>'
              f'<th>{esc(L["c_product"])}</th><th>{esc(L["c_name"])}</th><th>{esc(L["c_family"])}</th>'
-             f'<th>{esc(L["c_cves"])}</th><th>{esc(L["c_vuln_n"])}</th><th>{esc(L["c_fixed_n"])}</th>'
+             f'<th>{esc(L["c_cves"])}</th><th>{esc(L["c_vpr"])}</th><th>{esc(L["c_vuln_n"])}</th><th>{esc(L["c_fixed_n"])}</th>'
              f'<th>{esc(L["c_assets_n"])}</th><th>{esc(L["c_pstatus"])}</th></tr></thead><tbody>{trs}</tbody></table></div>')
     if s["not_in_catalog"]:
         table += f'<p class="muted" style="font-size:12px">* {esc(L["pl_extra"])}</p>'
@@ -1184,7 +1633,8 @@ def plugin_section(P, L, A):
             f'<div class="panel" style="margin-top:10px">{notes}{ctrls}{table}{inv}</div>')
 
 
-def sla_section(A, args, L, today):
+def sla_section(tk, args, today):
+    A, L, d0, pid = tk["A"], tk["L"], tk["disclosure"], tk["id"]
     n = args.sla_days
     src = L["sla_src_user" if args.sla_source == "user" else "sla_src_default"].format(n=n)
     if args.sla_ref:
@@ -1197,13 +1647,11 @@ def sla_section(A, args, L, today):
               sum(1 for v in vulns if v["status"] == "remediated" and v["outcome"] is None)]
     cls = ["t-orange", "t-red", "t-green", "t-red", ""]
     now = "".join(tile(c, lab, k) for c, lab, k in zip(counts, L["sla_now"], cls))
-
-    # worked example from this run's data: prefer a finding first seen before disclosure
     ex = ""
     dated = [v for v in vulns if v["first_seen"]]
-    pick = next((v for v in dated if v["first_seen"] < DISCLOSURE), dated[0] if dated else None)
+    pick = next((v for v in dated if v["first_seen"] < d0), dated[0] if dated else None)
     if pick:
-        cs = max(pick["first_seen"], DISCLOSURE)
+        cs = max(pick["first_seen"], d0)
         if pick["status"] == "open":
             over = pick["over"]
             o = (L["breached"].format(n=over) if over > 0 else L["due_today"] if over == 0 else L["due_in"].format(n=-over))
@@ -1212,20 +1660,19 @@ def sla_section(A, args, L, today):
             st = L["sla_ex_fixed"].format(fx=pick["fixed"] or "—", o=L.get(pick["outcome"] or "", "—"))
         ex = (f'<h3>{esc(L["sla_ex_h"])}</h3><p class="formula">' + esc(L["sla_ex"].format(
             a=pick["asset"], p=pick.get("plugin_id") or "—", fs=pick["first_seen"], cs=cs, due=pick["due"], state=st)) + "</p>")
-    nodates = "" if A["dates_ok"] else f'<div class="note">{esc(L["sla_nodates"].format(d=DISCLOSURE))}</div>'
-
+    nodates = "" if A["dates_ok"] else f'<div class="note">{esc(L["sla_nodates"].format(d=d0))}</div>'
     li = lambda xs: "<ul>" + "".join(f"<li>{esc(x)}</li>" for x in xs) + "</ul>"
     out_rows = "".join(f"<tr><td><b>{esc(a)}</b></td><td class=\"wrap\">{esc(b)}</td></tr>" for a, b in L["sla_out"])
     formulas = "".join(f'<div class="formula">{esc(f.format(n=n))}</div>' for f in L["sla_f"])
-    summary = L["sla_sum"].format(n=n, d=DISCLOSURE,
+    summary = L["sla_sum"].format(n=n, d=d0,
                                   src=L["sla_sum_user" if args.sla_source == "user" else "sla_sum_default"]
                                   + (f" ({args.sla_ref})" if args.sla_ref else ""))
-    basis = (f'<details class="fold" id="sla-basis"><summary><h2>{esc(L["sla_h"])}</h2>'
+    basis = (f'<details class="fold" id="{pid}-sla-basis"><summary><h2>{esc(L["sla_h"])}</h2>'
              f'<span class="fold-sum">{esc(summary)}</span><span class="fold-tip">{esc(L["sla_toggle"])}</span></summary>'
              f'<div class="panel">'
              f'<p>{esc(L["sla_intro"].format(n=n))}</p>'
              f'<div class="dgrid"><div><h3>{esc(L["sla_src_h"])}</h3><p>{esc(src)}</p>'
-             f'<h3>{esc(L["sla_clock_h"])}</h3>{li([x.format(d=DISCLOSURE) for x in L["sla_clock"]])}</div>'
+             f'<h3>{esc(L["sla_clock_h"])}</h3>{li([x.format(d=d0) for x in L["sla_clock"]])}</div>'
              f'<div><h3>{esc(L["sla_formula_h"])}</h3>{formulas}{ex}</div></div>'
              f'<h3>{esc(L["sla_out_h"])}</h3><div class="tablewrap"><table class="sub">{out_rows}</table></div>'
              f'<h3>{esc(L["sla_data_h"])}</h3>{li([x.format(t=today) for x in L["sla_data"]])}'
@@ -1259,15 +1706,122 @@ def disclaimer(runs, cur_run, args, L, hist_src):
             f'<div><h4>{esc(L["disc_keep_h"])}</h4>{li([x.format(n=n, m=m) for x in L["disc_keep"]])}</div></div></div>')
 
 
-def build_html(A, rows, runs, cur_run, args, L, version, today, executed_at, tl, P, hist_src=()):
+VB_ORDER = ("eol", "backport", "patch", "unknown", "patched", "na")  # first that applies wins
+
+
+def version_breakdown(rows, path_of):
+    """Assets by version status, each asset once (VB_ORDER priority). path_of(row) -> "backport" | "patch"
+    says how a vulnerable row gets fixed (OS-vendor backport vs. an upstream release / image rebuild)."""
+    cls = {}
+    for r in rows:
+        st = r.get("version_status") or "unknown"
+        is_vuln = r.get("role") == "vulnerable"
+        fixed = is_vuln and (r.get("state") or "ACTIVE").upper() == "FIXED"
+        if fixed:
+            c = "patched"
+        elif st == "eol":
+            c = "eol"
+        elif is_vuln or st == "vulnerable":
+            c = path_of(r)
+        else:
+            c = {"patched": "patched", "na": "na"}.get(st, "unknown")
+        a = r.get("asset") or r.get("ip") or "unknown"
+        if a not in cls or VB_ORDER.index(c) < VB_ORDER.index(cls[a]):
+            cls[a] = c
+    return {k: sum(1 for v in cls.values() if v == k) for k in VB_ORDER}, cls
+
+
+def dd_data(tk):
+    """Compact per-section dataset behind the clickable tiles: every vulnerable finding and every asset."""
+    L, A, vk = tk["L"], tk["A"], tk["ver_key"]
+    fnd = []
+    for v in A["vulns"]:
+        tgt, tcls = tk["target"](v)
+        if v["status"] == "remediated":
+            out, ocls = (L[v["outcome"]], v["outcome"]) if v["outcome"] else ("—", "none")
+        else:
+            o = v["over"]
+            out, ocls = ((L["breached"].format(n=o), "breached") if o > 0 else
+                         (L["due_today"], "pending") if o == 0 else (L["due_in"].format(n=-o), "pending"))
+        fnd.append({"a": v["asset"], "ip": v.get("ip") or "", "src": prod(v.get("source")), "pid": str(v.get("plugin_id") or ""),
+                    "name": v.get("plugin_name") or "", "cves": norm_cves(v.get("cves")), "ver": str(v.get(vk) or ""),
+                    "tgt": tgt, "tcls": tcls, "state": v["state"], "st": v["status"], "fs": str(v["first_seen"] or ""),
+                    "due": str(v["due"]), "fx": str(v["fixed"] or ""), "days": v["days_open"], "out": out, "ocls": ocls,
+                    "last": v.get("last_seen") or "", "vpr": v.get("vpr"), "acr": v.get("acr"), "aes": v.get("aes")})
+    meta = {}
+    for r in tk["rows"]:
+        m = meta.setdefault(r["asset"], {"fqdn": "", "src": set(), "ver": set()})
+        m["fqdn"] = m["fqdn"] or r.get("fqdn") or ""
+        if prod(r.get("source")):
+            m["src"].add(prod(r.get("source")))
+        if r.get(vk):
+            m["ver"].add(str(r.get(vk)))
+    uns, vbc = set(A["unscanned"]), tk.get("vbc") or {}
+    ast = []
+    for a, ai in sorted(A["assets"].items()):
+        m = meta.get(a, {"fqdn": "", "src": set(), "ver": set()})
+        g = vbc.get(a, "unknown")
+        ast.append({"a": a, "ip": ai.get("ip") or "", "fqdn": m["fqdn"], "src": ", ".join(sorted(m["src"])),
+                    "ver": ", ".join(sorted(m["ver"])), "vb": g, "vbl": L["vb_" + g], "st": ai["status"],
+                    "stl": L["as_" + ai["status"]], "last": str(ai["last_seen"] or ""), "open": ai["open"],
+                    "fixed": ai["rem"], "uns": a in uns, "acr": ai.get("acr"), "aes": ai.get("aes")})
+    lab = {x: L[x] for x in ("c_ver", "c_target")}
+    return json.dumps({"assets": ast, "findings": fnd, "lab": lab}, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def headline_strip(tk, args):
+    """Figures under the executive summary (same drill-down as the tiles)."""
+    L, k, pid = tk["L"], tk["A"]["kpis"], tk["id"]
+    confirmed = sum(1 for ai in tk["A"]["assets"].values() if ai["open"])
+    cells = [(k["php_assets"], L["hs_assets"], "k_php"), (confirmed, L["hs_confirmed"], "k_confirmed"),
+             (k["unscanned"], L["hs_unassessed"], "k_unscanned"), (k["open"], L["hs_open"], "k_open"),
+             (k["remediated"], L["hs_rem"], "k_rem"), ("—" if k["rate"] is None else f"{k['rate']}%", L["hs_rate"], "k_rate"),
+             ("—" if k["mttr"] is None else f"{k['mttr']} d", L["hs_mttr"], "k_mttr"),
+             (k["breached"], safe_fmt(L["hs_breach"], n=args.sla_days), "k_breach")]
+    cs = "".join(f'<div class="hs-c dd-card" role="button" tabindex="0" aria-pressed="false" data-dd="{d}">'
+                 f'<div class="v">{esc(v)}</div><div class="l">{esc(lab)}</div></div>' for v, lab, d in cells)
+    return (f'<div class="hs" data-ddg="{pid}-hs" data-trk="{pid}">{cs}</div><div class="dd-panel" id="{pid}-hs-dd"></div>')
+
+
+def version_panel(L, vb, total, pid):
+    color = {"eol": "vb-eol", "backport": "vb-bp", "patch": "vb-pa", "unknown": "vb-un", "patched": "vb-ok", "na": "vb-na"}
+    tiles_ = "".join(f'<div class="vbt dd-card {color[k]}" role="button" tabindex="0" aria-pressed="false" data-dd="vb_{k}" '
+                     f'title="{esc(L["vb_" + k + "_d"])}"><div class="v">{vb[k]}</div>'
+                     f'<div class="l">{esc(L["vb_" + k])}</div></div>' for k in VB_ORDER)
+    return (f'<h3 class="vb-h">{esc(L["vb_h"])}</h3><div class="vb" data-ddg="{pid}-vb" data-trk="{pid}">{tiles_}</div>'
+            f'<p class="muted" style="font-size:12px;margin:6px 0 0">{esc(safe_fmt(L["vb_hint"], n=total))}</p>'
+            f'<div class="dd-panel" id="{pid}-vb-dd"></div>')
+
+
+def context_panel(L):
+    """Business risk and decisions/asks narrative shown under Key indicators (per CVE section)."""
+    asks = "".join(f"<li><b>{esc(a)}</b> {esc(b)}</li>" for a, b in L["ctx_asks"])
+    return (f'<div class="ctx"><div><h3>{esc(L["ctx_risk_h"])}</h3><p>{esc(L["ctx_risk"])}</p></div>'
+            f'<div><h3>{esc(L["ctx_asks_h"])}</h3><ol>{asks}</ol></div></div>')
+
+
+def track_view(r, key):
+    """The part of a ledger run that belongs to a track: the run itself (PHP2Shell) or its sub-block."""
+    if not r:
+        return None
+    return r if not key else (r.get(key) if isinstance(r.get(key), dict) else None)
+
+
+def track_section(tk, args, today, runs, cur_run):
+    """One CVE section with every view: summary, SLA, KPIs, comparison, history, charts, plugins, tracker, findings."""
+    L, A, pid, key, d0 = tk["L"], tk["A"], tk["id"], tk["key"], tk["disclosure"]
+    badge = (f'<span class="badge p-{A["posture"]}">{esc(L["p_" + A["posture"]])}</span>' if A
+             else f'<span class="badge p-none">{esc(L["not_collected"])}</span>')
+    head = (f'<section class="trk" id="{tk["anchor"]}"><div class="sec-h"><div><h2 class="sec-t">{esc(tk["title"])}</h2>'
+            f'<div class="meta">CVEs: <b>{esc(", ".join(tk["cves"]))}</b> · {esc(L["disclosure"])}: <b>{d0}</b> · '
+            f'{esc(L["sla"])}: <b>{args.sla_days} {esc(L["days"])}</b></div></div>{badge}</div>')
+    if A is None:
+        return (head + f'<h2>{esc(L["exec_summary"])}</h2><div class="panel"><p>{esc(L["biz"])}</p>{tk.get("extra", "")}'
+                f'<div class="note">{esc(tk["none_note"])}</div></div>' + context_panel(L) + '</section>')
     k = A["kpis"]
-    lang = args.lang
-    pl = L["p_" + A["posture"]]
-    # verdict + business paragraph
     fk = dict(open=k['open'], exposed=k['exposed_assets'], breached=k['breached'], n=args.sla_days,
-              unscanned=k['unscanned'], unknown=k['unknown_assets'], d=DISCLOSURE)
+              unscanned=k['unscanned'], unknown=k['unknown_assets'], d=d0)
     verdict = L["verdict_" + A["posture"]].format(**fk)
-    biz = L["biz"]
     asks = []
     if k["breached"]:
         asks.append(L["ask_breached"].format(**fk))
@@ -1281,40 +1835,47 @@ def build_html(A, rows, runs, cur_run, args, L, version, today, executed_at, tl,
         asks.append(L["ask_nodates"])
     if not asks:
         asks.append(L["ask_none"])
+    summary = (f'<h2>{esc(L["exec_summary"])}</h2><div class="panel"><p class="verdict">{esc(verdict)}</p><p>{esc(L["biz"])}</p>'
+               f'{tk.get("extra", "")}<h3>{esc(L["decisions"])}</h3><ul>{"".join(f"<li>{esc(a)}</li>" for a in asks)}</ul></div>'
+               + headline_strip(tk, args))
 
-    tiles = "".join([
-        tile(k["php_assets"], L["k_php"], "t-purple"),
-        tile(k["exposed_assets"], L["k_exposed"], "t-red"),
-        tile(k["open"], L["k_open"], "t-red"),
-        tile(k["remediated"], L["k_rem"], "t-green"),
-        tile("—" if k["rate"] is None else f"{k['rate']}%", L["k_rate"], "t-green"),
+    tiles_ = "".join([
+        tile(k["php_assets"], L["k_php"], "t-purple", dd="k_php"),
+        tile(k["exposed_assets"], L["k_exposed"], "t-red", dd="k_exposed"),
+        tile(k["open"], L["k_open"], "t-red", dd="k_open"),
+        tile(k["remediated"], L["k_rem"], "t-green", dd="k_rem"),
+        tile("—" if k["rate"] is None else f"{k['rate']}%", L["k_rate"], "t-green", dd="k_rate"),
         tile("—" if k["mttr"] is None else f"{k['mttr']} d", L["k_mttr"], "t-accent",
-             L["mttr_vs_sla"].format(n=args.sla_days) + (" · " + (L["mttr_within"] if k["mttr"] <= args.sla_days else L["mttr_over"]) if k["mttr"] is not None else "")),
-        tile(k["breached"], L["k_breach"], "t-orange", f"SLA {args.sla_days} {L['days']}"),
-        tile(k["unscanned"], L["k_unscanned"], "t-orange"),
-    ])
+             L["mttr_vs_sla"].format(n=args.sla_days) + (" · " + (L["mttr_within"] if k["mttr"] <= args.sla_days else L["mttr_over"]) if k["mttr"] is not None else ""), dd="k_mttr"),
+        tile(k["breached"], L["k_breach"], "t-orange", f"SLA {args.sla_days} {L['days']}", dd="k_breach"),
+        tile(k["unscanned"], L["k_unscanned"], "t-orange", dd="k_unscanned"),
+    ] + tk.get("tiles_extra", []))
 
-    # comparison selector
-    others = [r for r in runs if r["run_id"] != cur_run["run_id"] and r.get("executed_at", "") <= cur_run["executed_at"]]
-    others = sorted(others, key=lambda r: r["executed_at"], reverse=True)
+    # comparison: only earlier runs that carry this track
+    others = sorted((r for r in runs if r["run_id"] != cur_run["run_id"] and r.get("executed_at", "") <= cur_run["executed_at"]
+                     and track_view(r, key) and track_view(r, key).get("kpis")), key=lambda r: r["executed_at"], reverse=True)
+    sel = ""
     if others:
-        opts = "".join(f'<option value="{esc(r["run_id"])}">{esc(r["executed_at"][:16].replace("T"," "))} UTC · {esc(r["run_id"])} · v{esc(r.get("skill_version","?"))}{" · demo" if r.get("demo") else ""}</option>' for r in others)
-        cmp_ctrl = f'<label class="muted">{esc(L["compare_with"])} </label><select id="cmp-sel">{opts}</select>'
-    else:
-        cmp_ctrl = ""
+        opts = "".join(f'<option value="{esc(r["run_id"])}">{esc(r["executed_at"][:16].replace("T", " "))} UTC · {esc(r["run_id"])} · v{esc(r.get("skill_version", "?"))}{" · demo" if r.get("demo") else ""}</option>' for r in others)
+        sel = f'<label class="muted">{esc(L["compare_with"])} </label><select class="cmp-sel">{opts}</select>'
+    kl = {x: L[x] for x in ("k_open", "k_rem", "k_rate", "k_breach", "k_exposed", "k_mttr", "k_unscanned")}
+    cmp_ = (f'<h2>{esc(L["compare"])}</h2><div class="panel cmpbox" data-key="{key}" data-pfx="{pid}" '
+            f'data-kl="{esc(json.dumps(kl, ensure_ascii=False))}" data-empty="{esc(tk["cmp_empty"])}">{sel}<div class="cmp-body"></div></div>')
 
-    # history table + trend
+    # history for this track
+    trk_runs = [r for r in runs if track_view(r, key)]
     hrows = ""
-    for r in sorted(runs, key=lambda r: r["executed_at"], reverse=True):
-        kk = r.get("kpis", {})
+    for r in sorted(trk_runs, key=lambda r: r["executed_at"], reverse=True):
+        t = track_view(r, key)
+        kk, po = t.get("kpis", {}), t.get("posture", "")
         cls = ' class="cur"' if r["run_id"] == cur_run["run_id"] else ""
         hrows += (f'<tr{cls}><td data-s="{esc(r["executed_at"])}"><span data-ts="{esc(r["executed_at"])}">{esc(r["executed_at"])}</span></td>'
-                  f'<td>{esc(r["run_id"])}{" (demo)" if r.get("demo") else ""}</td><td>v{esc(r.get("skill_version","?"))}</td>'
-                  f'<td><span class="badge p-{esc(r.get("posture",""))}" style="padding:1px 8px;font-size:11px">{esc(L.get("p_"+r.get("posture",""), r.get("posture","")))}</span></td>'
-                  f'<td>{esc(kk.get("open"))}</td><td>{esc(kk.get("remediated"))}</td>'
-                  f'<td>{"—" if kk.get("rate") is None else esc(kk.get("rate"))+"%"}</td><td>{esc(kk.get("breached"))}</td>'
-                  f'<td>{esc(kk.get("exposed_assets"))}</td><td>{esc(r.get("sla_days"))} d</td></tr>')
-    chron = sorted(runs, key=lambda r: r["executed_at"])
+                  f'<td>{esc(r["run_id"])}{" (demo)" if r.get("demo") else ""}</td><td>v{esc(r.get("skill_version", "?"))}</td>'
+                  f'<td>{f"""<span class="badge p-{esc(po)}" style="padding:1px 8px;font-size:11px">{esc(L.get("p_" + po, po))}</span>""" if po else "—"}</td>'
+                  f'<td>{esc(kk.get("open", "—"))}</td><td>{esc(kk.get("remediated", "—"))}</td>'
+                  f'<td>{"—" if kk.get("rate") is None else esc(kk.get("rate")) + "%"}</td><td>{esc(kk.get("breached", "—"))}</td>'
+                  f'<td>{esc(kk.get("exposed_assets", "—"))}</td><td>{esc(r.get("sla_days"))} d</td></tr>')
+    chron = sorted(trk_runs, key=lambda r: r["executed_at"])
     trend = ""
     if len(chron) >= 2:
         labels = [r["executed_at"][5:10] for r in chron]
@@ -1324,94 +1885,115 @@ def build_html(A, rows, runs, cur_run, args, L, version, today, executed_at, tl,
             if prev is not None and v != prev:
                 marks.append((i, f"v{v}"))
             prev = v
+        g = lambda r, x: (track_view(r, key).get("kpis", {}).get(x) or 0)
         trend = (f'<h3>{esc(L["trend"])}</h3>' + line_svg(
-            [[r.get("kpis", {}).get("open") or 0 for r in chron], [r.get("kpis", {}).get("remediated") or 0 for r in chron]],
+            [[g(r, "open") for r in chron], [g(r, "remediated") for r in chron]],
             labels, [C["red"], C["green"]], [L["open"], L["remediated"]], 200, marks))
+    hist = (f'<h2>{esc(L["history"])}</h2><div class="panel"><div class="tablewrap"><table id="{pid}-hist-tbl"><thead><tr>'
+            + "".join(f"<th>{esc(L[x])}</th>" for x in ("h_when", "h_run", "h_ver", "h_posture", "h_open", "h_rem", "h_rate", "h_breach", "h_assets"))
+            + f'<th>SLA</th></tr></thead><tbody>{hrows}</tbody></table></div>{trend}</div>')
 
-    # timeline
+    tl = tk["tl"]
     if tl:
         tl_html = line_svg([[o for _, o, _ in tl], [r for _, _, r in tl]], [d.strftime("%m-%d") for d, _, _ in tl],
                            [C["red"], C["green"]], [L["open"], L["remediated"]], 240,
-                           [(i, L["disclosure"]) for i, (d, _, _) in enumerate(tl) if d == DISCLOSURE])
+                           [(i, L["disclosure"]) for i, (d, _, _) in enumerate(tl) if d == d0])
     else:
         tl_html = f'<div class="note">{esc(L["no_dates"])}</div>'
+    chart = (f'<h2>{esc(L["chart"])}</h2><div class="panel">{split_bar(k["open"], k["remediated"], L)}'
+             f'<h3>{esc(L["timeline"])}</h3>{tl_html}</div>')
 
-    # tracker
+    # remediation tracker
+    vk = tk["ver_key"]
     vs = sorted(A["vulns"], key=lambda v: (v["status"] != "open", -(v.get("over") or -999), v["asset"]))
-    pmap = {e["plugin_id"]: e for e in P[0]}
+    pmap = {e["plugin_id"]: e for e in tk["P"][0]}
     by_pid = {}
     for v in A["vulns"]:
         by_pid.setdefault(str(v.get("plugin_id") or ""), []).append(v)
     trows = ""
     for v in vs:
-        pid = str(v.get("plugin_id") or "")
+        ppid = str(v.get("plugin_id") or "")
         is_open = v["status"] == "open"
         cells = (f'<td>{"<span class=caret>▸</span> " if is_open else ""}{esc(v["asset"])}</td><td>{esc(v.get("ip"))}</td><td>{esc(prod(v.get("source")))}</td>'
-                 f'<td>{esc(pid)}</td><td>{esc(v.get("php_version"))}</td>'
+                 f'<td>{esc(ppid)}</td>' + sc_td(v.get("vpr"), "vpr") + sc_td(v.get("acr"), "acr") + sc_td(v.get("aes"), "aes")
+                 + f'<td>{esc(v.get(vk))}</td>'
                  f'<td><span class="pill s-{v["status"]}">{esc(L[v["status"]])}</span></td>'
                  f'<td>{esc(v["first_seen"] or L["no_first"])}</td><td>{esc(v["due"])}</td>'
                  f'<td>{esc(v["fixed"] or "")}</td><td>{esc("" if v["days_open"] is None else v["days_open"])}</td>'
                  + outcome_cell(v, L) + f'<td data-s="{esc(v.get("last_seen") or "")}">{esc(v.get("last_seen") or "")}</td>')
         if is_open:
-            e = pmap.get(pid) or {"plugin_id": pid, "name": v.get("plugin_name", ""), "product": v.get("source", ""),
-                                  "family": "", "synopsis": "", "solution": "", "see_also": []}
+            e = pmap.get(ppid) or {"plugin_id": ppid, "name": v.get("plugin_name", ""), "product": v.get("source", ""),
+                                   "family": "", "synopsis": "", "solution": "", "see_also": [],
+                                   "component": v.get("component", "")}
             trows += (f'<tr class="pl-row" tabindex="0" aria-expanded="false" data-prod="{esc(prod(v.get("source")))}">{cells}</tr>'
-                      f'<tr class="pl-detail detail"><td colspan="12">'
-                      + plugin_detail(e, by_pid.get(pid, []), L, plugin_kind(e), me=v["asset"]) + "</td></tr>")
+                      f'<tr class="pl-detail detail"><td colspan="15">'
+                      + tk["detail"](e, by_pid.get(ppid, []), L, me=v["asset"]) + "</td></tr>")
         else:
             trows += f'<tr data-prod="{esc(prod(v.get("source")))}">{cells}</tr>'
-
+    rows = tk["rows"]
+    all_prods = sorted({prod(r.get("source")) for r in rows if prod(r.get("source"))})
+    ttid, ftid = f"{pid}-trk-tbl", f"{pid}-fnd-tbl"
+    tracker = (f'<h2>{esc(L["tracker"])}</h2><p class="hint">{esc(L["trk_click"])}</p>'
+               f'<p class="muted" style="font-size:12px">{esc(L["sc_note"])}</p>' + sc_missing_note(tk.get("sc"), ("vpr", "acr", "aes"), L)
+               + f'<div class="ctrls">{prod_select(ttid, all_prods, L)}'
+               f'<input class="filter" placeholder="{esc(L["search"])}" data-t="{ttid}"></div>'
+               f'<div class="tablewrap"><table id="{ttid}" class="dtbl"><thead><tr>'
+               + "".join(f"<th>{esc(L[x])}</th>" for x in ("c_asset", "c_ip", "c_src", "c_plugin", "c_vpr", "c_acr", "c_aes", "c_ver", "c_state", "c_first",
+                                                           "c_due", "c_fixed", "c_daysopen", "c_outcome", "c_last"))
+               + f'</tr></thead><tbody>{trows}</tbody></table></div>')
     frows = ""
     for r in sorted(rows, key=lambda r: (r["asset"], r.get("role", ""), str(r.get("plugin_id")))):
-        vs_ = r["version_status"]
+        lab, vcls = tk["vcell"](r)
         frows += (f'<tr data-prod="{esc(prod(r.get("source")))}"><td>{esc(r["asset"])}</td><td>{esc(r.get("ip"))}</td><td>{esc(prod(r.get("source")))}</td>'
-                  f'<td>{esc(r.get("plugin_id"))}</td><td class="wrap">{esc(r.get("plugin_name"))}</td>'
-                  f'<td>{"".join(f"<span class=cve>{esc(c)}</span>" for c in norm_cves(r.get("cves")))}</td><td>{esc(r.get("role"))}</td>'
-                  f'<td>{esc(r.get("php_version"))}</td><td><span class="pill s-{vs_}">{esc(L["st_"+vs_])}</span></td>'
+                  + sc_td(r.get("acr"), "acr") + sc_td(r.get("aes"), "aes")
+                  + f'<td>{esc(r.get("plugin_id"))}</td><td class="wrap">{esc(r.get("plugin_name"))}</td>'
+                  f'<td>{"".join(f"<span class=cve>{esc(c)}</span>" for c in norm_cves(r.get("cves")))}</td>'
+                  + sc_td(r.get("vpr"), "vpr") + f'<td>{esc(r.get("role"))}</td>'
+                  f'<td>{esc(r.get(vk))}</td><td><span class="pill s-{vcls}">{esc(lab)}</span></td>'
                   f'<td>{esc(r.get("state"))}</td><td>{esc(r.get("last_seen"))}</td></tr>')
+    findings = (f'<h2>{esc(L["findings"])}</h2><div class="ctrls">{prod_select(ftid, all_prods, L)}'
+                f'<input class="filter" placeholder="{esc(L["search"])}" data-t="{ftid}"></div>'
+                f'<div class="tablewrap"><table id="{ftid}"><thead><tr>'
+                + "".join(f"<th>{esc(L[x])}</th>" for x in ("c_asset", "c_ip", "c_src", "c_acr", "c_aes", "c_plugin", "c_name", "c_cves", "c_vpr", "c_role",
+                                                           "c_ver", "c_vstatus", "c_state", "c_last"))
+                + f'</tr></thead><tbody>{frows}</tbody></table></div>')
+    limits = "<ul>" + "".join(f"<li>{esc(x)}</li>" for x in tk["limits"]) + "</ul>"
+    tail = (f'<h2>{esc(L["mitig"])}</h2><div class="panel">{tk["mitig"]}</div>'
+            f'<h2>{esc(L["limits"])}</h2><div class="panel">{limits}</div>')
+    return (head + summary + sla_section(tk, args, today) + f'<h2>{esc(L["kpis"])}</h2><p class="hint">{esc(L["dd_hint"])}</p><div class="tiles" data-ddg="{pid}-kp" data-trk="{pid}">{tiles_}</div>'
+            + f'<div class="dd-panel" id="{pid}-kp-dd"></div>' + version_panel(L, tk["vb"], k["php_assets"], pid) + context_panel(L)
+            + cmp_ + hist + chart + plugin_section(tk) + tracker + findings + tail
+            + f'<script type="application/json" class="dd-data" data-trk="{pid}">{dd_data(tk)}</script></section>')
 
 
-    mitig = ("<ul><li><code>memory_limit=-1</code></li><li><code>session.upload_progress.enabled=0</code></li>"
-             "<li><code>fatal_error_backtraces=0</code> (PHP 8.5)</li>"
-             f"<li>{esc(L['mitig_restart'])}</li></ul>")
-    limits = "<ul>" + "".join(f"<li>{esc(x)}</li>" for x in L["limits_list"]) + "</ul>"
-
-    all_prods = sorted({prod(r.get("source")) for r in rows if prod(r.get("source"))})
-    hist_json = json.dumps({"format": LEDGER_FORMAT, "runs": runs}, separators=(",", ":")).replace("</", "<\\/")
+def build_html(tracks, runs, cur_run, args, L, version, today, executed_at, hist_src=()):
+    nav = "".join(
+        f'<a href="#{t["anchor"]}" class="tab" data-tab="{t["anchor"]}"><span class="tab-t">{esc(t["short"])}</span>'
+        f'<span class="tab-c">{esc(" / ".join(t["cves"]))}</span>'
+        + (f'<span class="badge p-{t["A"]["posture"]}">{esc(L["p_" + t["A"]["posture"]])}</span>' if t["A"]
+           else f'<span class="badge p-none">{esc(L["not_collected"])}</span>') + "</a>" for t in tracks)
+    srcs = "".join(f'<li><a href="{esc(u)}">{esc(t)}</a></li>' for t, u in [("Tenable Research — PHP2Shell FAQ", FAQ_URL)] + N2S_SOURCES)
+    hist_json = json.dumps({"format": LEDGER_FORMAT, "skill": "php2shell-tenable-tracker", "runs": runs},
+                           separators=(",", ":")).replace("</", "<\\/")
+    fn = getattr(args, "file_names", {"html": "report.html", "json": "history.json"})
+    export = (f'<div class="exp" role="group" aria-label="{esc(L["export"])}"><span class="exp-l">{esc(L["export"])}</span>'
+              f'<button type="button" class="btn exp-b" data-export="html" title="{esc(fn["html"])}">⤓ HTML</button>'
+              f'<button type="button" class="btn exp-b" data-export="json" title="{esc(fn["json"])}">⤓ JSON</button>'
+              f'<span class="exp-n">{esc(fn["html"])}<br>{esc(fn["json"])}</span></div>')
     i18n_json = json.dumps(L).replace("</", "<\\/")
     banner = f'<div class="banner">{esc(args.banner)}</div>' if args.banner else ""
-
     return f"""<!doctype html><html lang="{esc(L.get('html_lang', 'en'))}"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>PHP2Shell Tracker</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>PHP2Shell &amp; Node2Shell Tracker</title>
 <meta name="generator" content="php2shell-tenable-tracker {esc(version)}"><style>{CSS}</style></head>
-<body data-run="{esc(cur_run['run_id'])}"><div class="wrap">
+<body data-run="{esc(cur_run['run_id'])}" data-html-name="{esc(fn['html'])}" data-json-name="{esc(fn['json'])}"><div class="wrap">
 <header><div><h1>{esc(L['title'])}</h1>
 <div class="meta">{esc(L['executed'])}: <b data-ts="{esc(executed_at)}">{esc(executed_at)}</b> · {esc(L['run'])}: <b>{esc(cur_run['run_id'])}</b> ·
-{esc(L['version'])}: <b>v{esc(version)}</b> · {esc(L['sla'])}: <b>{args.sla_days} {esc(L['days'])}</b> · {esc(L['disclosure'])}: <b>{DISCLOSURE}</b> · CVEs: <b>{', '.join(CVES)}</b></div></div>
-<span class="badge p-{A['posture']}">{esc(pl)}</span></header>{banner}
+{esc(L['version'])}: <b>v{esc(version)}</b> · {esc(L['sla'])}: <b>{args.sla_days} {esc(L['days'])}</b></div></div>{export}</header>{banner}
+<nav class="tabs" aria-label="{esc(L['sections'])}">{nav}</nav>
+<p class="hint" style="margin-top:6px">{esc(L['tabs_hint'])}</p>
 {disclaimer(runs, cur_run, args, L, hist_src)}
-<h2>{esc(L['exec_summary'])}</h2><div class="panel"><p class="verdict">{esc(verdict)}</p><p>{esc(biz)}</p>
-<h3>{esc(L['decisions'])}</h3><ul>{''.join(f'<li>{esc(a)}</li>' for a in asks)}</ul></div>
-{sla_section(A, args, L, today)}
-<h2>{esc(L['kpis'])}</h2><div class="tiles">{tiles}</div>
-<h2>{esc(L['compare'])}</h2><div class="panel">{cmp_ctrl}<div id="cmp-body"></div></div>
-<h2>{esc(L['history'])}</h2><div class="panel">
-<div class="tablewrap"><table id="hist-tbl"><thead><tr><th>{esc(L['h_when'])}</th><th>{esc(L['h_run'])}</th><th>{esc(L['h_ver'])}</th>
-<th>{esc(L['h_posture'])}</th><th>{esc(L['h_open'])}</th><th>{esc(L['h_rem'])}</th><th>{esc(L['h_rate'])}</th><th>{esc(L['h_breach'])}</th>
-<th>{esc(L['h_assets'])}</th><th>SLA</th></tr></thead><tbody>{hrows}</tbody></table></div>{trend}</div>
-<h2>{esc(L['chart'])}</h2><div class="panel">{split_bar(k['open'], k['remediated'], L)}<h3>{esc(L['timeline'])}</h3>{tl_html}</div>
-{plugin_section(P, L, A)}
-<h2>{esc(L['tracker'])}</h2><p class="hint">{esc(L['trk_click'])}</p><div class="ctrls">{prod_select("trk-tbl", all_prods, L)}<input class="filter" placeholder="{esc(L['search'])}" data-t="trk-tbl"></div>
-<div class="tablewrap"><table id="trk-tbl"><thead><tr><th>{esc(L['c_asset'])}</th><th>{esc(L['c_ip'])}</th><th>{esc(L['c_src'])}</th>
-<th>{esc(L['c_plugin'])}</th><th>{esc(L['c_ver'])}</th><th>{esc(L['c_state'])}</th><th>{esc(L['c_first'])}</th><th>{esc(L['c_due'])}</th>
-<th>{esc(L['c_fixed'])}</th><th>{esc(L['c_daysopen'])}</th><th>{esc(L['c_outcome'])}</th><th>{esc(L['c_last'])}</th></tr></thead><tbody>{trows}</tbody></table></div>
-<h2>{esc(L['findings'])}</h2><div class="ctrls">{prod_select("fnd-tbl", all_prods, L)}<input class="filter" placeholder="{esc(L['search'])}" data-t="fnd-tbl"></div>
-<div class="tablewrap"><table id="fnd-tbl"><thead><tr><th>{esc(L['c_asset'])}</th><th>{esc(L['c_ip'])}</th><th>{esc(L['c_src'])}</th>
-<th>{esc(L['c_plugin'])}</th><th>{esc(L['c_name'])}</th><th>{esc(L['c_cves'])}</th><th>{esc(L['c_role'])}</th><th>{esc(L['c_ver'])}</th><th>{esc(L['c_vstatus'])}</th>
-<th>{esc(L['c_state'])}</th><th>{esc(L['c_last'])}</th></tr></thead><tbody>{frows}</tbody></table></div>
-<h2>{esc(L['mitig'])}</h2><div class="panel">{mitig}</div>
-<h2>{esc(L['limits'])}</h2><div class="panel">{limits}</div>
-<h2>{esc(L['sources'])}</h2><div class="panel"><ul><li><a href="{FAQ_URL}">Tenable Research — PHP2Shell FAQ</a></li>
+{''.join(track_section(t, args, today, runs, cur_run) for t in tracks)}
+<h2>{esc(L['sources'])}</h2><div class="panel"><ul>{srcs}
 <li>Tenable One / Tenable VM data via Tenable Hexa AI MCP ({esc(executed_at)})</li></ul></div>
 <footer>php2shell-tenable-tracker v{esc(version)} · {esc(L['readonly'])}</footer></div>
 <script id="run-history" type="application/json">{hist_json}</script>
@@ -1451,6 +2033,12 @@ def load_lang(code, lang_file=None):
     return L
 
 
+def n2s_lang(L):
+    """Strings for the Node2Shell section: the base language with the Node2Shell overrides on top."""
+    over = dict(T["en"]["n2s_over"]); over.update(L.get("n2s_over") or {})
+    return {**L, **over}
+
+
 def write_latest(root, out, cur_run, F, pdf_ok, demo=""):
     """<reports>/latest.json: the newest run's files plus an index of every run, newest first,
     so the next run (or a person) can open the latest report without guessing."""
@@ -1464,7 +2052,8 @@ def write_latest(root, out, cur_run, F, pdf_ok, demo=""):
           "skill_version": cur_run["skill_version"], "posture": cur_run["posture"], "sla_days": cur_run["sla_days"],
           "lang": cur_run["lang"], "html": rel(F["report"]), "history": rel(F["history"]), "run": rel(F["run"]),
           "pdf": rel(F["pdf"]) if pdf_ok else None,
-          "csv": {"findings": rel(F["csv"]), "plugins": rel(F["plugins"]), "changes": rel(F["changes"])}}
+          "csv": {"findings": rel(F["csv"]), "plugins": rel(F["plugins"]), "changes": rel(F["changes"]),
+                  "node2shell": rel(F["n2s"]), "node2shell_plugins": rel(F["n2s_plugins"])}}
     idx = [r for r in idx if isinstance(r, dict) and r.get("run_id") != me["run_id"]] + [me]
     idx.sort(key=lambda r: r.get("executed_at", ""), reverse=True)
     path.write_text(json.dumps({"skill": "php2shell-tenable-tracker", "ledger": "history" + demo + ".json",
@@ -1476,6 +2065,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("findings", nargs="?"); ap.add_argument("outdir", nargs="?")
     ap.add_argument("--plugins", help="plugins.json: every plugin returned by the CVE plugin search (plus inventory plugins)")
+    ap.add_argument("--node2shell-findings", help="findings for CVE-2026-111497 (Node2Shell), same row format; tracked in its own section")
+    ap.add_argument("--node2shell-plugins", help="plugins.json for CVE-2026-111497 (every plugin returned by the CVE plugin search)")
     ap.add_argument("--sla-days", type=int, default=None,
                     help="remediation SLA in days (default 7; record when it came from the user's policy)")
     ap.add_argument("--sla-ref", default="", help="policy reference shown in the SLA section, e.g. 'VM Policy 4.2 – Critical'")
@@ -1525,6 +2116,8 @@ def main():
                                                   ("changes", "csv"), ("run", "json"))}
     F["pdf"] = f"report_{stamp}.pdf"; F["csv"] = f"report_{stamp}.csv"
     F["history"] = f"history{demo}_{stamp}.json"
+    F["n2s"] = f"node2shell_{stamp}.csv"
+    F["n2s_plugins"] = f"node2shell_plugins_{stamp}.csv"
     args.file_names = {"html": F["report"], "json": F["history"]}
 
     catalog = load_catalog(args.plugins)
@@ -1532,9 +2125,44 @@ def main():
     for r in rows:
         if not norm_cves(r.get("cves")):
             r["cves"] = cat_cves.get(str(r.get("plugin_id") or ""), [])
+    sc_php = enrich_scores(rows, catalog)
     A = analyse(rows, args.sla_days, today)
     tl = timeline(A["vulns"], today)
     P = plugin_coverage(catalog, rows)
+    n2s_rows = json.loads(Path(args.node2shell_findings).read_text()) if args.node2shell_findings else None
+    if n2s_rows is not None and not isinstance(n2s_rows, list):
+        sys.exit("node2shell findings must be a JSON list of rows")
+    n2s_cat = load_catalog(args.node2shell_plugins)
+    Ln = n2s_lang(L)
+    An = Pn = tln = sc_n2s = None
+    if n2s_rows is not None or n2s_cat is not None:
+        # Node2Shell runs through the same pipeline as PHP2Shell, with its own disclosure, CVE and version logic
+        n2s_rows = n2s_rows or []
+        cmap = {c["plugin_id"]: c for c in n2s_cat or []}
+        for r in n2s_rows:
+            c = cmap.get(str(r.get("plugin_id") or "").strip(), {})
+            r.setdefault("role", "vulnerable")
+            r["asset"] = r.get("asset") or r.get("ip") or "unknown"
+            if not norm_cves(r.get("cves")):
+                r["cves"] = [N2S_CVE]
+            r["version"] = r.get("version") or r.get("installed_version") or ""
+            r["component"] = n2s_component(r.get("plugin_name") or c.get("name"), c.get("family", ""),
+                                           r.get("component") or c.get("component"), r.get("source") or c.get("product"))
+            r["target"], r["tstatus"] = n2s_target(r["component"], r["version"], Ln)
+        sc_n2s = enrich_scores(n2s_rows, n2s_cat)
+        An = analyse(n2s_rows, args.sla_days, today, N2S_DISCLOSURE,
+                     vfn=lambda r: "unknown" if r["tstatus"] == "pending" else r["tstatus"])
+        Pn = plugin_coverage(n2s_cat, n2s_rows, [N2S_CVE])
+        for e in Pn[0]:
+            e["component"] = n2s_component(e["name"], e.get("family", ""), e.get("component"), e.get("product"))
+        tln = timeline(An["vulns"], today, N2S_DISCLOSURE)
+
+    pcat = {e["plugin_id"]: e for e in P[0]}
+    vb_php, vbc_php = version_breakdown(rows, lambda r: "backport" if plugin_kind(
+        pcat.get(str(r.get("plugin_id") or ""), {"name": r.get("plugin_name", ""), "product": r.get("source", ""), "family": ""}))
+        in ("distro", "unpatched") else "patch")
+    vb_n2s, vbc_n2s = (version_breakdown(n2s_rows, lambda r: "backport" if r.get("component") == "distro" else "patch")
+                       if An else (None, None))
 
     cur_run = {
         "run_id": out.name, "executed_at": executed_at, "skill_version": version,
@@ -1548,7 +2176,23 @@ def main():
         "plugins": {e["plugin_id"]: [e["open"], e["fixed"]] for e in P[0]},
         "plugin_meta": {e["plugin_id"]: [e["name"], prod(e["product"])] for e in P[0]},
         "asset_meta": {a: ai.get("ip") or "" for a, ai in A["assets"].items()},
+        "plugin_vpr": {e["plugin_id"]: e.get("vpr") for e in P[0] if e.get("vpr") is not None},
+        "asset_scores": {a: [ai.get("acr"), ai.get("aes")] for a, ai in A["assets"].items()
+                         if ai.get("acr") is not None or ai.get("aes") is not None},
+        "version_breakdown": vb_php,
     }
+    if An is not None:  # separate block: never merged into the PHP2Shell findings/KPIs
+        cur_run["n2s"] = {"cve": N2S_CVE, "disclosure": str(N2S_DISCLOSURE), "posture": An["posture"],
+                          "dates_available": An["dates_ok"], "rows": len(n2s_rows), "kpis": An["kpis"], "version_breakdown": vb_n2s,
+                          "findings": {v["key"]: ("o" if v["status"] == "open" else "r") for v in An["vulns"]},
+                          "assets": {a: ai["status"] for a, ai in An["assets"].items()},
+                          "plugin_summary": Pn[2],
+                          "plugins": {e["plugin_id"]: [e["open"], e["fixed"]] for e in Pn[0]},
+                          "plugin_meta": {e["plugin_id"]: [e["name"], prod(e["product"])] for e in Pn[0]},
+                          "asset_meta": {a: ai.get("ip") or "" for a, ai in An["assets"].items()},
+                          "plugin_vpr": {e["plugin_id"]: e.get("vpr") for e in Pn[0] if e.get("vpr") is not None},
+                          "asset_scores": {a: [ai.get("acr"), ai.get("aes")] for a, ai in An["assets"].items()
+                                           if ai.get("acr") is not None or ai.get("aes") is not None}}
 
     ledger = Path(args.history) if args.history else out.parent / ("history.demo.json" if args.banner else "history.json")
     imported, hist_src = [], []
@@ -1580,13 +2224,18 @@ def main():
             and bool(r.get("demo")) == bool(args.banner)]
     prev = max(prev, key=lambda r: r["executed_at"]) if prev else None
     delta = compare(cur_run, prev) if prev and prev.get("findings") else None
+    n2s_prev = [r for r in runs if r["run_id"] != cur_run["run_id"] and r["executed_at"] <= executed_at
+                and bool(r.get("demo")) == bool(args.banner) and (r.get("n2s") or {}).get("findings") is not None]
+    n2s_prev = max(n2s_prev, key=lambda r: r["executed_at"]) if n2s_prev else None
+    n2s_delta = compare(cur_run["n2s"], n2s_prev["n2s"]) if An is not None and n2s_prev else None
 
     # CSVs
     with open(out / F["csv"], "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["asset", "ip", "fqdn", "source", "plugin_id", "plugin_name", "cves", "role", "php_version",
                     "version_status", "state", "finding_status", "first_seen", "sla_due", "fixed_date",
-                    "days_open", "sla_outcome", "last_seen", "port", "run_id", "executed_at", "skill_version"])
+                    "days_open", "sla_outcome", "last_seen", "port", "run_id", "executed_at", "skill_version",
+                    "vpr", "acr", "aes"])
         vmap = {v["key"]: v for v in A["vulns"]}
         for r in rows:
             v = vmap.get(fkey(r)) if r.get("role") == "vulnerable" else None
@@ -1596,11 +2245,12 @@ def main():
                         r.get("state"), v["status"] if v else "", v["first_seen"] if v and v["first_seen"] else "",
                         v["due"] if v else "", v["fixed"] if v and v["fixed"] else "",
                         "" if not v or v["days_open"] is None else v["days_open"], v["outcome"] if v and v["outcome"] else "",
-                        r.get("last_seen"), r.get("port"), cur_run["run_id"], executed_at, version])
+                        r.get("last_seen"), r.get("port"), cur_run["run_id"], executed_at, version,
+                        fmt_score(r.get("vpr"), "vpr"), fmt_score(r.get("acr"), "acr"), fmt_score(r.get("aes"), "aes")])
     with open(out / F["changes"], "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["change", "asset", "ip", "plugin", "plugin_name", "product", "baseline_run", "current_run",
-                    "baseline_version", "current_version"])
+                    "baseline_version", "current_version", "track", "vpr", "acr", "aes"])
         if delta:
             pm = dict(prev.get("plugin_meta") or {}); pm.update(cur_run["plugin_meta"])
             am = dict(prev.get("asset_meta") or {}); am.update(cur_run["asset_meta"])
@@ -1608,8 +2258,24 @@ def main():
                 for key in keys:
                     a, p = key.split("|", 1)
                     m = pm.get(p) or ["", ""]
+                    sa = cur_run["asset_scores"].get(a) or (prev.get("asset_scores") or {}).get(a) or [None, None]
                     w.writerow([kind, a, am.get(a, ""), p, m[0], m[1], prev["run_id"], cur_run["run_id"],
-                                prev.get("skill_version"), version])
+                                prev.get("skill_version"), version, "php2shell",
+                                fmt_score(cur_run["plugin_vpr"].get(p, (prev.get("plugin_vpr") or {}).get(p)), "vpr"),
+                                fmt_score(sa[0], "acr"), fmt_score(sa[1], "aes")])
+        if n2s_delta:
+            pb, cb = n2s_prev["n2s"], cur_run["n2s"]
+            pm = dict(pb.get("plugin_meta") or {}); pm.update(cb["plugin_meta"])
+            am = dict(pb.get("asset_meta") or {}); am.update(cb["asset_meta"])
+            for kind, keys in n2s_delta.items():
+                for key in keys:
+                    a, p = key.split("|", 1)
+                    m = pm.get(p) or ["", ""]
+                    sa = cb["asset_scores"].get(a) or (pb.get("asset_scores") or {}).get(a) or [None, None]
+                    w.writerow([kind, a, am.get(a, ""), p, m[0], m[1], n2s_prev["run_id"], cur_run["run_id"],
+                                n2s_prev.get("skill_version"), version, "node2shell",
+                                fmt_score(cb["plugin_vpr"].get(p, (pb.get("plugin_vpr") or {}).get(p)), "vpr"),
+                                fmt_score(sa[0], "acr"), fmt_score(sa[1], "aes")])
 
     with open(out / F["plugins"], "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -1617,7 +2283,7 @@ def main():
         w.writerow(["plugin_id", "product", "name", "family", "cves"] + cve_cols +
                    ["vulnerable_findings", "fixed_findings", "assets", "plugin_status", "from_cve_search",
                     "remediation_path", "vulnerable_assets", "fixed_assets", "tenable_solution",
-                    "run_id", "executed_at", "skill_version"])
+                    "run_id", "executed_at", "skill_version", "vpr"])
         by_pid = {}
         for v in A["vulns"]:
             by_pid.setdefault(str(v.get("plugin_id") or ""), []).append(v)
@@ -1628,9 +2294,57 @@ def main():
                         plugin_kind(e),
                         " ".join(sorted({v["asset"] for v in by_pid.get(e["plugin_id"], []) if v["status"] == "open"})),
                         " ".join(sorted({v["asset"] for v in by_pid.get(e["plugin_id"], []) if v["status"] == "remediated"})),
-                        e.get("solution", ""), cur_run["run_id"], executed_at, version])
+                        e.get("solution", ""), cur_run["run_id"], executed_at, version, fmt_score(e.get("vpr"), "vpr")])
 
-    html_text = build_html(A, rows, runs, cur_run, args, L, version, today, executed_at, tl, P, hist_src)
+    with open(out / F["n2s"], "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["cve", "asset", "ip", "fqdn", "source", "plugin_id", "plugin_name", "component", "installed_version",
+                    "target_version", "version_status", "state", "finding_status", "first_seen", "sla_due", "fixed_date",
+                    "days_open", "sla_outcome", "last_seen", "port", "run_id", "executed_at", "skill_version",
+                    "vpr", "acr", "aes"])
+        for v in (An["vulns"] if An else []):
+            w.writerow([N2S_CVE, v["asset"], v.get("ip"), v.get("fqdn"), v.get("source"), v.get("plugin_id"), v.get("plugin_name"),
+                        v["component"], v["version"], v["target"], v["tstatus"], v["state"], v["status"],
+                        v["first_seen"] or "", v["due"], v["fixed"] or "", "" if v["days_open"] is None else v["days_open"],
+                        v["outcome"] or "", v.get("last_seen"), v.get("port"), cur_run["run_id"], executed_at, version,
+                        fmt_score(v.get("vpr"), "vpr"), fmt_score(v.get("acr"), "acr"), fmt_score(v.get("aes"), "aes")])
+
+    with open(out / F["n2s_plugins"], "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["plugin_id", "product", "name", "family", "component", "cves", "vulnerable_findings", "fixed_findings",
+                    "assets", "plugin_status", "from_cve_search", "vulnerable_assets", "fixed_assets", "tenable_solution",
+                    "run_id", "executed_at", "skill_version", "vpr"])
+        by_pid = {}
+        for v in (An["vulns"] if An else []):
+            by_pid.setdefault(str(v.get("plugin_id") or ""), []).append(v)
+        for e in (Pn[0] if Pn else []):
+            w.writerow([e["plugin_id"], e["product"], e["name"], e["family"], e["component"], " ".join(e["cves"]),
+                        e["open"], e["fixed"], len(e["assets"]), e["status"], "yes" if e["in_catalog"] else "no",
+                        " ".join(sorted({v["asset"] for v in by_pid.get(e["plugin_id"], []) if v["status"] == "open"})),
+                        " ".join(sorted({v["asset"] for v in by_pid.get(e["plugin_id"], []) if v["status"] == "remediated"})),
+                        e.get("solution", ""), cur_run["run_id"], executed_at, version, fmt_score(e.get("vpr"), "vpr")])
+
+    php_tk = {"id": "php", "key": "", "anchor": "php2shell", "short": "PHP2Shell", "title": L["php_h"], "cves": list(CVES),
+              "disclosure": DISCLOSURE, "L": L, "A": A, "P": P, "tl": tl, "rows": rows, "ver_key": "php_version",
+              "detail": lambda e, vs, LL, me=None: plugin_detail(e, vs, LL, plugin_kind(e), me),
+              "family": lambda e: e["family"],
+              "vcell": lambda r: (L["st_" + r["version_status"]], r["version_status"]),
+              "mitig": ("<ul><li><code>memory_limit=-1</code></li><li><code>session.upload_progress.enabled=0</code></li>"
+                        "<li><code>fatal_error_backtraces=0</code> (PHP 8.5)</li>" f"<li>{esc(L['mitig_restart'])}</li></ul>"),
+              "limits": L["limits_list"], "cmp_empty": L["no_prev"], "none_note": "", "vb": vb_php, "vbc": vbc_php, "sc": sc_php,
+              "target": lambda v: target_version(v.get("php_version"), plugin_kind(pcat.get(str(v.get("plugin_id") or ""),
+                  {"name": v.get("plugin_name", ""), "product": v.get("source", ""), "family": ""})), L)}
+    n2s_tk = {"id": "n2s", "key": "n2s", "anchor": "node2shell", "short": "Node2Shell", "title": Ln["n2s_h"], "cves": [N2S_CVE],
+              "disclosure": N2S_DISCLOSURE, "L": Ln, "A": An, "P": Pn, "tl": tln, "rows": n2s_rows or [], "ver_key": "version",
+              "detail": n2s_detail,
+              "family": lambda e: f'{e["family"]} · {Ln["comp_" + e["component"]]}' if e["family"] else Ln["comp_" + e["component"]],
+              "vcell": lambda r: (r["target"], r["tstatus"]),
+              "mitig": "<ul>" + "".join(f"<li>{x}</li>" for x in Ln["n2s_mit"]) + "</ul>",
+              "limits": Ln["n2s_limits"], "cmp_empty": Ln["n2s_cmp_none"], "none_note": Ln["n2s_none"],
+              "extra": (f'<p class="muted" style="font-size:12px">{esc(Ln["n2s_status"])}</p>'
+                        f'<div class="note">{esc(Ln["n2s_why"])}</div>'),
+              "vb": vb_n2s, "vbc": vbc_n2s, "sc": sc_n2s, "target": lambda v: (v["target"], v["tstatus"])}
+    html_text = build_html([php_tk, n2s_tk], runs, cur_run, args, L, version, today, executed_at, hist_src)
     (out / F["report"]).write_text(html_text, encoding="utf-8")
 
     pdf = "skipped"
@@ -1643,7 +2357,8 @@ def main():
                 b = p.chromium.launch()
                 pg = b.new_page(viewport={"width": 1280, "height": 900})
                 pg.goto((out / F["report"]).resolve().as_uri())
-                pg.evaluate("document.querySelectorAll('details.fold').forEach(d=>d.open=true)")
+                pg.evaluate("document.querySelectorAll('details.fold').forEach(d=>d.open=true);"
+                            "document.querySelectorAll('section.trk').forEach(s=>s.hidden=false)")
                 pg.emulate_media(media="print")
                 pg.pdf(path=str(out / F["pdf"]), format="A4", landscape=True, print_background=True,
                        margin={"top": "0", "bottom": "0", "left": "0", "right": "0"}, prefer_css_page_size=True)
@@ -1663,6 +2378,17 @@ def main():
           + f" with_vulnerable={s['with_open']} fixed_only={s['fixed_only']} no_findings={s['no_findings']}"
           + f" not_in_catalog={s['not_in_catalog']} unmatched_rows={s['unmatched_rows']}"
           + ("" if s["catalog"] else " catalog=missing"))
+    if An is None:
+        print("node2shell=not_collected")
+    else:
+        nk, ns = An["kpis"], Pn[2]
+        print(f"node2shell={N2S_CVE} posture={An['posture']} open={nk['open']} remediated={nk['remediated']} rate={nk['rate']} "
+              f"mttr={nk['mttr']} past_sla={nk['breached']} exposed_assets={nk['exposed_assets']} unscanned={nk['unscanned']} "
+              f"dates={'yes' if An['dates_ok'] else 'no'} plugins={ns['total']} with_vulnerable={ns['with_open']} "
+              f"no_findings={ns['no_findings']} unmatched_rows={ns['unmatched_rows']}" + ("" if ns["catalog"] else " catalog=missing")
+              + (" delta_vs=" + n2s_prev["run_id"] + " " + " ".join(f"{kk}={len(vv)}" for kk, vv in n2s_delta.items()) if n2s_delta else " delta_vs=none"))
+    print("scores php2shell " + " ".join(f"{k}={'yes' if v else 'no'}" for k, v in sc_php.items())
+          + ("" if sc_n2s is None else " node2shell " + " ".join(f"{k}={'yes' if v else 'no'}" for k, v in sc_n2s.items())))
     print(f"version={version} run={cur_run['run_id']} executed_at={executed_at} ledger={ledger} runs_in_ledger={len(runs)}")
     if delta:
         print("delta_vs=" + prev["run_id"] + " " + " ".join(f"{kk}={len(vv)}" for kk, vv in delta.items())
@@ -1670,7 +2396,7 @@ def main():
     else:
         print("delta_vs=none (first run in this ledger)")
     print(f"pdf={pdf}")
-    print("files=" + " ".join(str(out / F[x]) for x in ("report", "history", "run", "csv", "plugins", "changes"))
+    print("files=" + " ".join(str(out / F[x]) for x in ("report", "history", "run", "csv", "plugins", "changes", "n2s", "n2s_plugins"))
           + (f" {out / F['pdf']}" if pdf == "ok" else ""))
     print(f"latest={ledger.parent / ('latest' + demo + '.json')}")
 

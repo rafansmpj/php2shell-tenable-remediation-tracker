@@ -1,0 +1,120 @@
+[
+ {
+  "asset": "api-01",
+  "ip": "10.0.1.21",
+  "fqdn": "api-01.demo.local",
+  "source": "VM",
+  "plugin_id": "370101",
+  "plugin_name": "Node.js 22.x < 22.23.4 / 24.x < 24.22.1 / 26.x < 26.12.1 Brotli Decoder RCE (Node2Shell)",
+  "cves": [
+   "CVE-2026-111497"
+  ],
+  "version": "24.22.0",
+  "port": 0,
+  "last_seen": "2026-10-24",
+  "role": "vulnerable",
+  "state": "ACTIVE",
+  "first_seen": "2026-10-22",
+  "fixed_date": "",
+  "acr": 3,
+  "aes": 666
+ },
+ {
+  "asset": "api-02",
+  "ip": "10.0.1.22",
+  "fqdn": "api-02.demo.local",
+  "source": "VM",
+  "plugin_id": "370101",
+  "plugin_name": "Node.js 22.x < 22.23.4 / 24.x < 24.22.1 / 26.x < 26.12.1 Brotli Decoder RCE (Node2Shell)",
+  "cves": [
+   "CVE-2026-111497"
+  ],
+  "version": "22.21.0",
+  "port": 0,
+  "last_seen": "2026-10-24",
+  "role": "vulnerable",
+  "state": "ACTIVE",
+  "first_seen": "2026-10-22",
+  "fixed_date": "",
+  "acr": 9,
+  "aes": 744
+ },
+ {
+  "asset": "build-01",
+  "ip": "10.0.2.5",
+  "fqdn": "build-01.demo.local",
+  "source": "VM",
+  "plugin_id": "370102",
+  "plugin_name": "Node.js Unsupported Version Detection (Node2Shell)",
+  "cves": [
+   "CVE-2026-111497"
+  ],
+  "version": "20.18.1",
+  "port": 0,
+  "last_seen": "2026-10-24",
+  "role": "vulnerable",
+  "state": "ACTIVE",
+  "first_seen": "2026-10-21",
+  "fixed_date": "",
+  "acr": 9,
+  "aes": 538
+ },
+ {
+  "asset": "etl-01",
+  "ip": "10.0.3.9",
+  "fqdn": "etl-01.demo.local",
+  "source": "VM",
+  "plugin_id": "370110",
+  "plugin_name": "Python Brotli / brotlicffi < 1.2.1 Out-of-Bounds Write",
+  "cves": [
+   "CVE-2026-111497"
+  ],
+  "version": "1.1.0",
+  "port": 0,
+  "last_seen": "2026-10-24",
+  "role": "vulnerable",
+  "state": "ACTIVE",
+  "first_seen": "2026-10-22",
+  "fixed_date": "",
+  "acr": 4,
+  "aes": 596
+ },
+ {
+  "asset": "web-01",
+  "ip": "10.0.0.11",
+  "fqdn": "web-01.demo.local",
+  "source": "VM",
+  "plugin_id": "370120",
+  "plugin_name": "Debian dsa-6582 : brotli - security update",
+  "cves": [
+   "CVE-2026-111497"
+  ],
+  "version": "1.1.0-2",
+  "port": 0,
+  "last_seen": "2026-10-24",
+  "role": "vulnerable",
+  "state": "ACTIVE",
+  "first_seen": "2026-10-22",
+  "fixed_date": ""
+ },
+ {
+  "asset": "edge-01",
+  "ip": "10.0.0.2",
+  "fqdn": "edge-01.demo.local",
+  "source": "VM",
+  "plugin_id": "370130",
+  "plugin_name": "Envoy Proxy < 1.40.0 Brotli Decompressor Vulnerability",
+  "cves": [
+   "CVE-2026-111497"
+  ],
+  "version": "1.39.1",
+  "port": 0,
+  "last_seen": "2026-10-24",
+  "role": "vulnerable",
+  "state": "ACTIVE",
+  "first_seen": "2026-10-23",
+  "fixed_date": "",
+  "acr": 5,
+  "aes": 698
+ }
+]

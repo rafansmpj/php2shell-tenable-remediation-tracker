@@ -1,0 +1,86 @@
+{
+ "demo": true,
+ "note": "Demo Node2Shell (CVE-2026-111497) plugin catalog for testing render.py only. On a real run, build it from plugins_search_plugins(cve='CVE-2026-111497'); never reuse this file.",
+ "plugins": [
+  {
+   "plugin_id": "370101",
+   "product": "VM",
+   "family": "Misc.",
+   "name": "Node.js 22.x < 22.23.4 / 24.x < 24.22.1 / 26.x < 26.12.1 Brotli Decoder RCE (Node2Shell)",
+   "cves": [
+    "CVE-2026-111497"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "(demo) The Node.js runtime on the remote host bundles a Brotli decoder affected by Node2Shell.",
+   "solution": "(demo) Upgrade Node.js to 22.23.4, 24.22.1, 26.12.1 or later.",
+   "vpr": 8.6
+  },
+  {
+   "plugin_id": "370102",
+   "product": "VM",
+   "family": "Misc.",
+   "name": "Node.js Unsupported Version Detection (Node2Shell)",
+   "cves": [
+    "CVE-2026-111497"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "",
+   "solution": "",
+   "vpr": 8.8
+  },
+  {
+   "plugin_id": "370110",
+   "product": "VM",
+   "family": "Misc.",
+   "name": "Python Brotli / brotlicffi < 1.2.1 Out-of-Bounds Write",
+   "cves": [
+    "CVE-2026-111497"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "",
+   "solution": "(demo) Upgrade Brotli to 1.2.1 and brotlicffi to 1.2.1.0.",
+   "vpr": 8.0
+  },
+  {
+   "plugin_id": "370120",
+   "product": "VM",
+   "family": "Debian Local Security Checks",
+   "name": "Debian dsa-6582 : brotli - security update",
+   "cves": [
+    "CVE-2026-111497"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "",
+   "solution": "(demo) Upgrade the brotli packages.",
+   "see_also": [
+    "https://security-tracker.debian.org/tracker/CVE-2026-111497"
+   ],
+   "vpr": 9.6
+  },
+  {
+   "plugin_id": "370130",
+   "product": "VM",
+   "family": "Misc.",
+   "name": "Envoy Proxy < 1.40.0 Brotli Decompressor Vulnerability",
+   "cves": [
+    "CVE-2026-111497"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "",
+   "solution": "",
+   "vpr": 6.8
+  },
+  {
+   "plugin_id": "300901",
+   "product": "Cloud",
+   "family": "Container",
+   "name": "node image Brotli Node2Shell",
+   "cves": [
+    "CVE-2026-111497"
+   ],
+   "plugin_type": "container-security",
+   "synopsis": "",
+   "solution": ""
+  }
+ ]
+}

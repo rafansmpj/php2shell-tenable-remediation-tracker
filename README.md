@@ -80,7 +80,7 @@ Claude Desktop handles file placement automatically.
 Clone this repo into your skills directory:
 
 ```bash
-git clone https://github.com/rafansmpj/Tenable-PHP2Shell-Remediation-Tracker.git ~/.claude/skills/php2shell-tenable-remediation-tracker
+git clone https://github.com/rafansmpj/php2shell-tenable-remediation-tracker.git ~/.claude/skills/php2shell-tenable-remediation-tracker
 ```
 
 Or copy the repo folder into `~/.claude/skills/` manually. Claude Code auto-discovers skills in that directory — no restart required, just start a new session.
@@ -331,7 +331,7 @@ php2shell-tenable-remediation-tracker/
 └── assets/                  demo inputs (PHP2Shell and Node2Shell) — never for real runs
 ```
 
-Current version: **2.14.0** — see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **2.15.0** — see [`VERSION`](VERSION) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ### Sources
 
@@ -347,7 +347,7 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ## Support
 
-For issues, feature requests, or questions, open an issue on [GitHub Issues](https://github.com/rafansmpj/Tenable-PHP2Shell-Remediation-Tracker/issues).
+For issues, feature requests, or questions, open an issue on [GitHub Issues](https://github.com/rafansmpj/php2shell-tenable-remediation-tracker/issues).
 
 ## Content Agreement
 

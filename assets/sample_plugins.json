@@ -13,7 +13,8 @@
    ],
    "plugin_type": "was",
    "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
-   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later.",
+   "vpr": 6.6
   },
   {
    "plugin_id": "115720",
@@ -26,7 +27,8 @@
    ],
    "plugin_type": "was",
    "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
-   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later.",
+   "vpr": 9.7
   },
   {
    "plugin_id": "115721",
@@ -39,7 +41,8 @@
    ],
    "plugin_type": "was",
    "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
-   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later.",
+   "vpr": 9.4
   },
   {
    "plugin_id": "115722",
@@ -52,7 +55,8 @@
    ],
    "plugin_type": "was",
    "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
-   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later.",
+   "vpr": 8.5
   },
   {
    "plugin_id": "369483",
@@ -68,7 +72,8 @@
    "solution": "(demo) Upgrade to PHP 8.2.35, 8.3.36, 8.4.27, 8.5.12 or later.",
    "see_also": [
     "https://www.php.net/ChangeLog-8.php"
-   ]
+   ],
+   "vpr": 6.6
   },
   {
    "plugin_id": "370006",
@@ -80,7 +85,8 @@
    ],
    "plugin_type": "nessus",
    "synopsis": "(demo) The installed PHP package is affected and no vendor fix is available yet.",
-   "solution": "(demo) There is no known solution at this time."
+   "solution": "(demo) There is no known solution at this time.",
+   "vpr": 8.8
   },
   {
    "plugin_id": "370055",
@@ -92,7 +98,8 @@
    ],
    "plugin_type": "nessus",
    "synopsis": "(demo) The installed PHP package is affected and no vendor fix is available yet.",
-   "solution": "(demo) There is no known solution at this time."
+   "solution": "(demo) There is no known solution at this time.",
+   "vpr": 9.6
   },
   {
    "plugin_id": "369521",
@@ -107,7 +114,8 @@
    "solution": "(demo) Update the affected php packages.",
    "see_also": [
     "https://ubuntu.com/security/notices"
-   ]
+   ],
+   "vpr": 9.3
   },
   {
    "plugin_id": "476445",
@@ -118,7 +126,8 @@
     "CVE-2026-109619"
    ],
    "plugin_type": "container-security",
-   "solution": "(demo) Update the affected php85 package."
+   "solution": "(demo) Update the affected php85 package.",
+   "vpr": 6.8
   },
   {
    "plugin_id": "48243",

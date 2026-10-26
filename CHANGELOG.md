@@ -13,6 +13,90 @@ How to release a change:
 3. Add an entry at the top of this file: `## [x.y.z] — YYYY-MM-DD`, then `### Added / Changed / Fixed` bullets.
 4. If the change is MAJOR, say under `### Comparability` what an older run can no longer be compared on.
 
+## [2.15.0] — 2026-10-26
+
+### Added
+- **VPR, ACR and AES in every table where they apply**, in both CVE sections: plugin VPR in the applicable-plugins table, the plugin drill-down header, the remediation tracker, the all-findings table, the finding tile panels and the comparison "by plugin" view; asset ACR and AES in the plugin drill-down asset tables (vulnerable and fixed), the tracker, the all-findings table, the asset and finding tile panels and the comparison "by asset" view. Colour-coded, sortable; "—" when Tenable returned no value, with a note when a score is missing for the whole run.
+- Collection: VPR from `plugins_get_plugin_details` (`vpr` in `plugins.json`, optional `vpr` per finding row); ACR/AES per asset from `tenable_one_search_assets` filtered by `asset_id` (`acr` / `aes` on each finding row).
+- `vpr`, `acr`, `aes` columns appended to report, plugins, changes, node2shell and node2shell_plugins CSVs; `plugin_vpr` and `asset_scores` stored on each run (and its `n2s` block); renderer prints a `scores` line.
+- EN, PT-BR, ES strings (`c_vpr`, `c_acr`, `c_aes`, `sc_note`, `sc_missing`). Demo inputs carry sample scores.
+
+### Comparability
+- No change to numbers, KPIs, posture or the ledger format. Runs from earlier versions have no scores; their comparison rows show "—" unless the current run has the value. Existing CSV columns keep their positions.
+
+## [2.14.0] — 2026-10-26
+
+### Added
+- **Clickable figures with drill-down** in both CVE sections: every KPI tile, every "Assets by version status" tile and every cell of the new headline strip opens a panel below its row listing the assets (with their findings: plugin, state, target version, SLA due and outcome) or the findings (asset plus vulnerability and SLA detail) behind the number; filterable, sortable, closable, keyboard accessible. Data comes from a compact per-section JSON embedded in the report.
+- **Headline strip under the executive summary** (both sections): assets running PHP / Node.js-Brotli, confirmed vulnerable (assets with an open finding — new figure), not assessed since disclosure, open findings, remediated, remediation rate, mean time to remediate, open past the SLA.
+- EN, PT-BR and ES strings for all of the above (`dd_*`, `hs_*`, `as_*`, `c_vgroup`, `c_astatus`, `c_open_n`).
+
+### Comparability
+- No change to numbers, KPIs, posture or the ledger format.
+
+## [2.13.0] — 2026-10-26
+
+### Added
+- **Assets by version status** row under Key indicators in both CVE sections: Vulnerable – EOL, Vulnerable – backport only, Vulnerable – patch available, Unknown – verify, Patched, Not affected. Each asset is counted once (first matching group, left to right), so the tiles sum to the assets in scope; definitions on hover, specific to each CVE. EN, PT-BR, ES.
+- `version_breakdown` stored on each run and on its `n2s` block.
+- Version status `na` ("Not affected"): PHP branches newer than every affected branch, Brotli before 1.0.3. Treated like Patched for asset status and posture.
+
+### Removed
+- The Node2Shell-only "Open on EOL Node.js lines" KPI tile — covered by "Vulnerable – EOL".
+
+### Comparability
+- No change to KPIs, posture or comparison numbers. In CSVs, `version_status` can now read `na` where it read `patched` for those out-of-range versions.
+
+## [2.12.1] — 2026-10-26
+
+### Changed
+- Node2Shell **Business risk / Decisions and asks** reworded to mirror the PHP2Shell panel sentence for sentence (attack, worst-case impact, exposure window; confirm scan coverage; reduce exposure while patching), adjusted for Node2Shell facts: code execution is possible rather than routine, and public proof-of-concept code — not exploitation — appeared at disclosure. EN, PT-BR, ES.
+
+### Comparability
+- Wording only; no change to numbers.
+
+## [2.12.0] — 2026-10-26
+
+### Added
+- **Export menu** in the report header (top right): **HTML** downloads the report as rendered, named `report_<stamp>.html`; **JSON** downloads the execution history named `history_<stamp>.json` (`history.demo_<stamp>.json` for demo runs) — the same names and content as the files the renderer writes, so a download can be used as the history for the next run. Hidden in the PDF.
+- **Business risk / Decisions and asks** panel under Key indicators in each CVE section: business impact of the flaw and two standing asks (confirm scan coverage since 21 October; reduce exposure while patching). PHP2Shell and Node2Shell each have their own wording, in EN, PT-BR and ES (`ctx_*` strings; Node2Shell's in `n2s_over`).
+
+### Changed
+- The ledger embedded in the HTML now carries `"skill"` like `history_<stamp>.json`.
+
+### Comparability
+- No change to numbers, KPIs, posture or the ledger format.
+
+## [2.11.0] — 2026-10-26
+
+### Changed
+- **One section per CVE.** The report is split into a PHP2Shell section (CVE-2026-109618 / CVE-2026-109619) and a Node2Shell section (CVE-2026-111497), picked from a switcher at the top that shows each section's posture. The PDF prints both. The history disclaimer stays above the sections and sources are listed once at the end.
+- **Node2Shell gets every PHP2Shell view**: executive summary with posture, verdict and asks; SLA basis and "this run against the SLA"; the eight KPIs plus open findings on EOL Node.js lines; run comparison with clickable scenario cards and asset/plugin drill-down; execution history and trend; open vs remediated chart and daily timeline; applicable plugins with drill-down; remediation tracker; all findings; mitigations; limitations. It is computed by the same pipeline on its own data, CVE, disclosure date and version logic.
+- Node2Shell wording (verdicts, asks, SLA basis, KPI labels) lives in `n2s_over`, layered over the report language (EN, PT-BR, ES; custom translations fall back to English for missing keys).
+- Report title is now "PHP2Shell & Node2Shell — Exposure & Remediation Tracker". The 2.10 cross-links (header "Related" link, the Node2Shell line and asks in the PHP2Shell summary, the "Node2Shell open" history column) are replaced by the section switcher.
+
+### Added
+- `node2shell_plugins_<stamp>.csv`; a `track` column in `changes_<stamp>.csv` with Node2Shell changes included; a fuller `node2shell=` output line (posture, rate, MTTR, unscanned, delta).
+- The ledger's `n2s` block now carries posture, asset status, plugin counts and plugin/asset names (trimmed like the main block after 60 runs).
+
+### Comparability
+- PHP2Shell numbers, KPIs, posture and the findings.json contract are unchanged. Node2Shell KPIs now use the PHP2Shell KPI names; 2.10.0 runs used other names, so Node2Shell KPI deltas against a 2.10.0 run show "—" (finding-level changes still compare). Runs before 2.10.0 have no Node2Shell data.
+
+## [2.10.0] — 2026-10-26
+
+### Added
+- **Related exposure: Node2Shell (CVE-2026-111497)** — a separate report section for the Google Brotli decoder RCE disclosed the same day as PHP2Shell (Node.js, libbrotli, Python Brotli / brotlicffi, software bundling Brotli). It has its own KPIs (assets, open, fixed, past SLA, open on EOL runtimes, plugins), change since the previous run with Node2Shell data, an applicable-plugins table with drill-down (assets, installed and target versions, remediation by component, mitigations), a findings table, and Node2Shell mitigations. EN, PT-BR and ES.
+- New inputs `--node2shell-findings` / `--node2shell-plugins` (`node2shell_findings.json`, `node2shell_plugins.json`), new output `node2shell_<stamp>.csv` (also listed in `latest.json`), and a `node2shell=` line in the renderer output.
+- Version logic for Node2Shell (`N2S_FIXED`): Node.js 22.23.4 / 24.22.1 / 26.12.1 (20.x and older, 23.x, 25.x EOL), Brotli 1.0.10 / 1.1.1 / 1.2.1 (before 1.0.3 not affected), Python Brotli 1.2.1; OS packages, container images and other bundling software point to the vendor fix / image rebuild.
+- Header link, executive-summary status line and separate asks for Node2Shell; "Node2Shell open" column in the execution history; Node2Shell limitations and sources.
+- Demo inputs `assets/sample_node2shell_run1.json`, `run2.json`, `sample_node2shell_plugins.json`.
+
+### Changed
+- SKILL.md steps 3–9 collect, render, check, deliver and summarise Node2Shell alongside PHP2Shell; the description mentions it for triggering.
+
+### Comparability
+- PHP2Shell numbers, KPIs, posture, the findings.json contract and the ledger format are unchanged; Node2Shell never feeds them. Runs gain an optional `n2s` block (KPIs + finding status), which older versions ignore. Runs before 2.10.0 have no Node2Shell data, so the first 2.10.0 run is the Node2Shell baseline.
+
 ## [2.9.0] — 2026-10-25
 
 ### Added

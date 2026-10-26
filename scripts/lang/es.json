@@ -1,5 +1,5 @@
 {
- "title": "PHP2Shell — Tracker de Exposición y Remediación",
+ "title": "PHP2Shell y Node2Shell — Tracker de Exposición y Remediación",
  "executed": "Ejecutado",
  "run": "Ejecución",
  "version": "Versión del skill",
@@ -181,11 +181,26 @@
  ],
  "sla_out_h": "Cómo se asignan los resultados",
  "sla_out": [
-  ["Vence en N d / Vence hoy", "Finding abierto; hoy es igual o anterior a la fecha de vencimiento del SLA."],
-  ["Vencido hace N d", "Finding abierto; hoy ya pasó la fecha de vencimiento del SLA. Se cuenta en “Findings fuera del SLA” y determina la postura CRÍTICA."],
-  ["Cumplido", "Finding corregido cuya fecha de corrección es igual o anterior al vencimiento del SLA."],
-  ["Incumplido", "Finding corregido después del vencimiento del SLA."],
-  ["—", "Finding corregido sin fecha de corrección en Tenable: el resultado no puede evaluarse y queda en blanco."]
+  [
+   "Vence en N d / Vence hoy",
+   "Finding abierto; hoy es igual o anterior a la fecha de vencimiento del SLA."
+  ],
+  [
+   "Vencido hace N d",
+   "Finding abierto; hoy ya pasó la fecha de vencimiento del SLA. Se cuenta en “Findings fuera del SLA” y determina la postura CRÍTICA."
+  ],
+  [
+   "Cumplido",
+   "Finding corregido cuya fecha de corrección es igual o anterior al vencimiento del SLA."
+  ],
+  [
+   "Incumplido",
+   "Finding corregido después del vencimiento del SLA."
+  ],
+  [
+   "—",
+   "Finding corregido sin fecha de corrección en Tenable: el resultado no puede evaluarse y queda en blanco."
+  ]
  ],
  "sla_data_h": "Datos detrás de las fechas",
  "sla_data": [
@@ -302,5 +317,166 @@
   "Los plugins WAS se publicaron el 21/10/2026; los escaneos anteriores no detectan PHP2Shell, así que un resultado vacío en un activo sin escaneo reciente significa no evaluado, no limpio.",
   "\"Ya no reportados\" en la comparación no prueba una corrección."
  ],
- "kpi_only": "La línea base conservó solo los KPIs (es más antigua que la ventana de detalle)."
+ "kpi_only": "La línea base conservó solo los KPIs (es más antigua que la ventana de detalle).",
+ "n2s_h": "Node2Shell (CVE-2026-111497)",
+ "n2s_status": "Situación al 23/10/2026: CVSS 4.0 de 9,2 (Google, CNA); sin explotación activa reportada y fuera del catálogo KEV de CISA; existe código de prueba de concepto público. Un servicio solo está expuesto si él, o una biblioteca que usa, decodifica datos Brotli controlados por el atacante.",
+ "n2s_none": "No se recopilaron datos de Node2Shell en esta ejecución, por eso esta sección está vacía. No es evidencia de que ningún activo esté afectado.",
+ "n2s_cmp_none": "Ninguna ejecución anterior del historial tiene datos de Node2Shell; la próxima se comparará con esta.",
+ "c_component": "Componente",
+ "c_inst": "Versión instalada",
+ "comp_nodejs": "Node.js",
+ "comp_brotli": "Biblioteca Brotli",
+ "comp_python": "Brotli / brotlicffi de Python",
+ "comp_distro": "Paquete del SO",
+ "comp_other": "Brotli incluido (otro software)",
+ "n2s_tgt_eol": "EOL – migrar a Node.js 22, 24 o 26",
+ "n2s_tgt_na": "No afectado (anterior a 1.0.3)",
+ "n2s_rem_nodejs": [
+  "Actualizar Node.js a la versión corregida de su línea: 22.23.4, 24.22.1 o 26.12.1 — en servidores, imágenes de contenedor y serverless y runners de CI.",
+  "Las líneas 20.x y anteriores, 23.x y 25.x son EOL y no reciben corrección: migrarlas a 22, 24 o 26.",
+  "Actualizar paquetes npm como Express no lo corrige; hay que actualizar el runtime.",
+  "Reiniciar todos los procesos Node.js y volver a escanear para confirmar que el finding pasa a FIXED."
+ ],
+ "n2s_rem_brotli": [
+  "Actualizar la biblioteca Brotli a 1.2.1, o 1.1.1 / 1.0.10 en ramas antiguas.",
+  "Reconstruir o actualizar el software que incluye libbrotli de forma estática (curl, Bun, Envoy, Istio) a su versión corregida.",
+  "Reiniciar los servicios que cargan la biblioteca y volver a escanear para confirmar que el finding pasa a FIXED."
+ ],
+ "n2s_rem_python": [
+  "Actualizar los paquetes de Python Brotli a 1.2.1 y brotlicffi a 1.2.1.0 en todos los entornos e imágenes.",
+  "Reiniciar los servicios Python y volver a escanear para confirmar que el finding pasa a FIXED."
+ ],
+ "n2s_rem_distro": [
+  "Aplicar la actualización del paquete brotli / nodejs del proveedor del SO (apt / dnf / yum / zypper); el proveedor hace backport de la corrección, así que la versión puede quedar por debajo de la versión upstream corregida.",
+  "Consultar el advisory del proveedor en las referencias del plugin para la versión exacta del paquete corregido; algunas distribuciones aún no la publicaron.",
+  "Reiniciar los servicios que usan el paquete y volver a escanear para confirmar que el finding pasa a FIXED."
+ ],
+ "n2s_rem_other": [
+  "Actualizar el producto que incluye Brotli a su versión corregida (p. ej. Bun 1.4.4; Envoy 1.40.0 / 1.39.3 / 1.38.6 / 1.37.8; Istio 1.29.9 / 1.30.6 / 1.31.2).",
+  "Donde aún no haya actualización, aplicar las mitigaciones de abajo.",
+  "Volver a escanear para confirmar que el finding pasa a FIXED."
+ ],
+ "n2s_mit": [
+  "Rechazar solicitudes entrantes cuyo Content-Encoding contenga <code>br</code> en el proxy, WAF o middleware.",
+  "En llamadas salientes, quitar <code>br</code> de Accept-Encoding y rechazar respuestas Brotli antes de decodificar — cambiar solo el encabezado no basta.",
+  "Express / body-parser: <code>inflate: false</code> rechaza cuerpos de solicitud codificados (solo entrada; las respuestas obtenidas no quedan cubiertas).",
+  "Envoy / Istio: quitar el filtro descompresor Brotli si está configurado; curl: quitar <code>--compressed</code>.",
+  "Python: desinstalar Brotli / brotlicffi solo como último recurso (los servidores que envían Brotli pueden fallar)."
+ ],
+ "n2s_limits": [
+  "El estado de Node2Shell proviene de la versión instalada de Node.js / Brotli; no muestra si el servicio realmente decodifica Brotli controlado por el atacante, así que la versión puede sobrestimar la exposición real.",
+  "El software que incluye Brotli de forma estática (curl, Bun, Envoy, Istio, apps de escritorio) puede no detectarse por chequeo de versión."
+ ],
+ "comp_container": "Imagen de contenedor",
+ "n2s_rem_container": [
+  "Reconstruir la imagen sobre una imagen base con Node.js 22.23.4 / 24.22.1 / 26.12.1 o Brotli 1.0.10 / 1.1.1 / 1.2.1 (o el paquete corregido de la distribución).",
+  "Volver a desplegar todas las cargas desde la nueva imagen — corregir un contenedor en ejecución no persiste.",
+  "Volver a escanear la imagen / registry para confirmar que el finding pasa a FIXED."
+ ],
+ "php_h": "PHP2Shell (CVE-2026-109618 / CVE-2026-109619)",
+ "sections": "Secciones por CVE",
+ "tabs_hint": "Una sección por CVE. Elija una sección arriba; cada una tiene su propio resumen, SLA, KPIs, comparación de ejecuciones, historial, plugins, tracker y findings. El PDF imprime ambas.",
+ "not_collected": "No recopilado",
+ "n2s_why": "No es una vulnerabilidad de PHP: Node2Shell se divulgó el mismo día que PHP2Shell, pero aquí se mide por separado — versiones de Node.js, Brotli y Brotli de Python contra sus propias versiones corregidas — y nunca cambia los números de PHP2Shell.",
+ "n2s_over": {
+  "k_php": "Activos con findings Node2Shell",
+  "k_unscanned": "Activos sin escaneo desde la divulgación",
+  "c_ver": "Versión instalada",
+  "c_vstatus": "Versión objetivo",
+  "verdict_CRITICAL": "{open} findings Node2Shell abiertos en {exposed} activos, {breached} ya fuera del SLA de {n} días.",
+  "verdict_HIGH": "{exposed} activos siguen expuestos a Node2Shell; ninguno fuera del SLA de {n} días todavía.",
+  "verdict_GUARDED": "Sin exposición confirmada a Node2Shell, pero hay activos con versión desconocida o sin escaneo desde la divulgación.",
+  "verdict_CONTROLLED": "Sin exposición abierta a Node2Shell y todos los activos afectados fueron evaluados desde la divulgación.",
+  "biz": "Node2Shell (CVE-2026-111497) es una escritura fuera de límites en el decodificador Brotli de Google (1.0.3 a 1.2.0) que un atacante remoto, sin autenticación, puede provocar con un flujo Brotli manipulado, con posible ejecución remota de código. Alcanza a Node.js (Brotli incluido), Brotli / brotlicffi de Python, libbrotli y el software que la incluye (curl, Bun, Envoy, Istio): un servicio expuesto puede caerse, filtrar memoria o, en el peor caso, ser tomado.",
+  "ask_patch": "Actualizar los {exposed} activos expuestos a Node.js 22.23.4 / 24.22.1 / 26.12.1 o Brotli 1.0.10 / 1.1.1 / 1.2.1 (Brotli de Python 1.2.1), con mitigaciones temporales hasta entonces.",
+  "ask_unscanned": "Volver a escanear los {unscanned} activos sin evaluar desde {d} — brecha de cobertura, no un resultado limpio.",
+  "ask_unknown": "Verificar la versión de Node.js / Brotli en {unknown} activos con estado desconocido.",
+  "sla_src_default": "{n} días es el valor por defecto de este skill, definido para PHP2Shell y aplicado aquí para medir ambas exposiciones igual. Node2Shell es una falla preautenticación, explotable en remoto, con CVSS 4.0 de 9,2 y código de prueba de concepto público; al 23/10/2026 no había explotación activa reportada y no estaba en el KEV de CISA.",
+  "sla_clock": [
+   "El reloj empieza en la más tardía de dos fechas: la divulgación pública ({d}) y el first seen del finding en Tenable.",
+   "Un finding con first seen anterior a la divulgación (por ejemplo, de un plugin genérico de versión de Node.js) empieza el {d}: nadie podía remediar Node2Shell antes de que fuera público.",
+   "Un finding con first seen posterior a la divulgación empieza en su first seen: el activo es nuevo, se escaneó recién o se volvió vulnerable después.",
+   "Si Tenable no devolvió first seen, el reloj empieza en la divulgación y el tracker muestra \"Sin fecha de first seen\"."
+  ],
+  "pl_note": "Todos los plugins que Tenable asocia a CVE-2026-111497, descubiertos por CVE en esta ejecución. Vulnerables = findings aún ACTIVE/RESURFACED; Corregidos = findings en estado FIXED. Un plugin sin findings no se disparó en este tenant — no es prueba de seguridad si los activos no se escanearon desde la divulgación.",
+  "mit_none": "No necesaria: este plugin no tiene findings. Aplicar solo en activos sin escaneo desde la divulgación.",
+  "mitig": "Mitigaciones temporales de Node2Shell (reducen la exposición, no corrigen)",
+  "ctx_risk": "Atacantes sin autenticación pueden corromper la memoria y potencialmente ejecutar código en un servidor Node.js vulnerable o en cualquier servicio que decodifique Brotli, con datos comprimidos manipulados. El impacto en el peor caso es el compromiso total del servicio afectado — APIs, servicios Python y proxies como Envoy e Istio: robo de datos, preparación de ransomware y punto de apoyo para movimiento lateral. El código de prueba de concepto público apareció con la divulgación, así que la ventana entre el escaneo y el parche es la exposición que asume el negocio.",
+  "ctx_asks": [
+   [
+    "Confirmar la cobertura de escaneo.",
+    "Comprobar que Nessus con credenciales y el escaneo de imágenes de contenedor hayan cubierto el entorno con Node.js y Brotli desde el 21 de octubre con plugins actualizados. Un resultado vacío puede significar que no hay runtime afectado, o activos que nunca se escanearon o salieron del inventario por antigüedad."
+   ],
+   [
+    "Reducir la exposición mientras se parchea.",
+    "Aplicar las mitigaciones temporales de abajo y rechazar solicitudes con codificación Brotli (br) en el proxy o WAF de los servicios expuestos a internet; reducen el riesgo pero no lo eliminan."
+   ]
+  ],
+  "vb_eol_d": "Ejecuta Node.js 20.x o anterior, 23.x o 25.x: EOL, Node.js no lo corregirá — migrar a 22, 24 o 26.",
+  "vb_backport_d": "Vulnerable por un paquete brotli / nodejs del proveedor del SO: la corrección llega como paquete con backport, así que la versión sola no la confirma.",
+  "vb_patch_d": "Vulnerable y existe corrección: Node.js 22.23.4 / 24.22.1 / 26.12.1, Brotli 1.0.10 / 1.1.1 / 1.2.1, Brotli de Python 1.2.1, versión del proveedor del producto que lo incluye, o reconstrucción de la imagen.",
+  "vb_unknown_d": "No se pudo leer ninguna versión de Node.js / Brotli y ningún finding abierto lo decide — verificar en el host.",
+  "vb_na_d": "Brotli anterior a 1.0.3, o versión fuera del rango afectado.",
+  "hs_assets": "Activos con Node.js / Brotli",
+  "c_target": "Versión objetivo"
+ },
+ "export": "Exportar",
+ "ctx_risk_h": "Riesgo para el negocio",
+ "ctx_asks_h": "Decisiones y solicitudes",
+ "ctx_risk": "Atacantes sin autenticación pueden ejecutar código en un servidor PHP vulnerable con una sola solicitud. El impacto típico es el compromiso total de la capa web: robo de datos, preparación de ransomware y punto de apoyo para movimiento lateral. La explotación pública comenzó con la divulgación, así que la ventana entre el escaneo y el parche es la exposición que asume el negocio.",
+ "ctx_asks": [
+  [
+   "Confirmar la cobertura de escaneo.",
+   "Comprobar que Nessus con credenciales y Web App Scanning hayan cubierto el entorno web desde el 21 de octubre con plugins actualizados. Un resultado vacío puede significar que no hay PHP, o activos que nunca se escanearon o salieron del inventario por antigüedad."
+  ],
+  [
+   "Reducir la exposición mientras se parchea.",
+   "Aplicar los ajustes temporales de abajo y reglas de WAF en PHP expuesto a internet; reducen el riesgo pero no lo eliminan."
+  ]
+ ],
+ "vb_h": "Activos por estado de versión",
+ "vb_hint": "Cada activo se cuenta una vez, en el primer grupo que aplica de izquierda a derecha, así que los seis suman los {n} activos en alcance. Pase el cursor sobre un bloque para ver su definición.",
+ "vb_eol": "Vulnerable – EOL",
+ "vb_backport": "Vulnerable – solo backport",
+ "vb_patch": "Vulnerable – parche disponible",
+ "vb_unknown": "Desconocido – verificar",
+ "vb_patched": "Corregido",
+ "vb_na": "No afectado",
+ "vb_eol_d": "Ejecuta una rama de PHP anterior a 8.2: EOL, no se publicará corrección — migrar a una rama soportada.",
+ "vb_backport_d": "Vulnerable por un paquete PHP del proveedor del SO (plugin de distribución, o aún sin corrección del proveedor): la corrección llega como paquete con backport, así que la versión sola no la confirma.",
+ "vb_patch_d": "Vulnerable y existe corrección upstream: PHP 8.5.12 / 8.4.27 / 8.3.36 / 8.2.35, o reconstrucción de la imagen para contenedores.",
+ "vb_unknown_d": "Se encontró PHP pero no se pudo leer la versión y ningún finding abierto lo decide — verificar en el host.",
+ "vb_patched_d": "En una versión corregida, o todos los findings del activo están FIXED.",
+ "vb_na_d": "Versión fuera del rango afectado.",
+ "st_na": "No afectado",
+ "dd_hint": "Haga clic en cualquier bloque — aquí, en Activos por estado de versión o en la franja bajo el resumen ejecutivo — para ver los activos y findings detrás de él.",
+ "dd_close": "Cerrar",
+ "dd_assets": "{n} activos",
+ "dd_findings": "{n} findings",
+ "dd_empty": "Nada en este bloque.",
+ "dd_nofind": "Sin findings vulnerables",
+ "dd_unscanned": "sin escaneo desde la divulgación",
+ "c_vgroup": "Grupo de versión",
+ "c_astatus": "Estado del activo",
+ "c_open_n": "Findings abiertos",
+ "as_open": "Findings abiertos",
+ "as_at_risk": "Versión vulnerable, sin finding abierto",
+ "as_remediated": "Remediado",
+ "as_patched": "Corregido",
+ "as_unknown": "Desconocido",
+ "hs_assets": "Activos con PHP",
+ "hs_confirmed": "Vulnerables confirmados",
+ "hs_unassessed": "Sin evaluar desde la divulgación",
+ "hs_open": "Findings abiertos",
+ "hs_rem": "Remediados",
+ "hs_rate": "Tasa de remediación",
+ "hs_mttr": "Tiempo medio de remediación",
+ "hs_breach": "Abiertos fuera del SLA de {n} días",
+ "dd_asset1": "{n} activo",
+ "dd_finding1": "{n} finding",
+ "c_vpr": "VPR",
+ "c_acr": "ACR",
+ "c_aes": "AES",
+ "sc_note": "VPR = Vulnerability Priority Rating del plugin en Tenable (0–10). ACR = Asset Criticality Rating (1–10) y AES = Asset Exposure Score (0–1000), ambos de Tenable One para el asset en el momento de la ejecución. “—” = Tenable no devolvió valor.",
+ "sc_missing": "Tenable no devolvió {what} en esta ejecución; esas columnas muestran “—”."
 }
