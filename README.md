@@ -27,7 +27,7 @@ Identifies every asset exposed to PHP2Shell — the pre-auth PHP remote code exe
 
 The same report also tracks **Node2Shell** (CVE-2026-111497), an out-of-bounds write in the Google Brotli decoder disclosed the same day, which reaches Node.js, libbrotli, Python Brotli / brotlicffi and software bundling Brotli (curl, Bun, Envoy, Istio). Node2Shell gets its own section with the same views, and its numbers are **never mixed** into PHP2Shell's.
 
-Delivers an interactive HTML report, a PDF and CSV exports in the conversation.
+Delivers an interactive HTML report, a PDF and CSV exports in the conversation, and summarizes the counts by status, the ten worst assets and the interim mitigations directly in chat.
 
 ### Audience
 
@@ -120,6 +120,12 @@ The skill will:
 5. 📊 Render the interactive report (see [Report Layout](#report-layout))
 6. ✅ Screenshot and check the report, including the drill-downs
 7. 💾 Deliver HTML, PDF, CSVs and the timestamped history file to keep for the next run
+8. 💬 Summarize the results in chat, so the key answers are available without opening the report:
+   - **Counts by status** — open vs. remediated findings, remediation rate, mean time to remediate, findings past SLA, and versus the previous run: new, remediated since, regressed, still open and no longer reported
+   - **The ten worst assets** — the open assets that need attention first
+   - **The interim mitigations** — what to apply while patching (see [Interim Mitigations](#interim-mitigations))
+
+   The summary also states the posture and verdict, the language and SLA applied, whether the run continued a history or started a new baseline, and any coverage gaps or data issues.
 
 ## Report Layout
 
