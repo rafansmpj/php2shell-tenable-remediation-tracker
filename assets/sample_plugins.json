@@ -1,0 +1,140 @@
+{
+ "demo": true,
+ "note": "Demo plugin catalog for testing render.py only. On a real run, plugins.json is built from plugins_search_plugins(cve=...) for each CVE; never reuse this file.",
+ "plugins": [
+  {
+   "plugin_id": "115719",
+   "product": "WAS",
+   "family": "Component Vulnerability",
+   "name": "PHP 8.2 Multiple Vulnerabilities",
+   "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "was",
+   "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+  },
+  {
+   "plugin_id": "115720",
+   "product": "WAS",
+   "family": "Component Vulnerability",
+   "name": "PHP 8.3 Multiple Vulnerabilities",
+   "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "was",
+   "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+  },
+  {
+   "plugin_id": "115721",
+   "product": "WAS",
+   "family": "Component Vulnerability",
+   "name": "PHP 8.4 Multiple Vulnerabilities",
+   "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "was",
+   "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+  },
+  {
+   "plugin_id": "115722",
+   "product": "WAS",
+   "family": "Component Vulnerability",
+   "name": "PHP 8.5 Multiple Vulnerabilities",
+   "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "was",
+   "synopsis": "(demo) The remote web application runs a PHP version affected by PHP2Shell.",
+   "solution": "(demo) Upgrade PHP to 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later."
+  },
+  {
+   "plugin_id": "369483",
+   "product": "VM",
+   "family": "CGI abuses",
+   "name": "PHP < 8.2.35 / 8.3.x < 8.3.36 / 8.4.x < 8.4.27 / 8.5.x < 8.5.12 Multiple Vulnerabilities",
+   "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "(demo) The remote host runs a PHP version affected by PHP2Shell.",
+   "solution": "(demo) Upgrade to PHP 8.2.35, 8.3.36, 8.4.27, 8.5.12 or later.",
+   "see_also": [
+    "https://www.php.net/ChangeLog-8.php"
+   ]
+  },
+  {
+   "plugin_id": "370006",
+   "product": "VM",
+   "family": "Misc.",
+   "name": "Linux Distros Unpatched Vulnerability : CVE-2026-109618",
+   "cves": [
+    "CVE-2026-109618"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "(demo) The installed PHP package is affected and no vendor fix is available yet.",
+   "solution": "(demo) There is no known solution at this time."
+  },
+  {
+   "plugin_id": "370055",
+   "product": "VM",
+   "family": "Misc.",
+   "name": "Linux Distros Unpatched Vulnerability : CVE-2026-109619",
+   "cves": [
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "nessus",
+   "synopsis": "(demo) The installed PHP package is affected and no vendor fix is available yet.",
+   "solution": "(demo) There is no known solution at this time."
+  },
+  {
+   "plugin_id": "369521",
+   "product": "VM",
+   "family": "Ubuntu Local Security Checks",
+   "name": "Ubuntu : PHP vulnerabilities (demo)",
+   "cves": [
+    "CVE-2026-109618",
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "nessus",
+   "solution": "(demo) Update the affected php packages.",
+   "see_also": [
+    "https://ubuntu.com/security/notices"
+   ]
+  },
+  {
+   "plugin_id": "476445",
+   "product": "Cloud",
+   "family": "Alpine Local Security Checks",
+   "name": "Alpine Linux : php85 (demo)",
+   "cves": [
+    "CVE-2026-109619"
+   ],
+   "plugin_type": "container-security",
+   "solution": "(demo) Update the affected php85 package."
+  },
+  {
+   "plugin_id": "48243",
+   "product": "VM",
+   "family": "CGI abuses",
+   "name": "PHP Version Detection",
+   "role": "inventory",
+   "plugin_type": "nessus"
+  },
+  {
+   "plugin_id": "58987",
+   "product": "VM",
+   "family": "CGI abuses",
+   "name": "PHP Unsupported Version Detection",
+   "role": "inventory",
+   "plugin_type": "nessus"
+  }
+ ]
+}
